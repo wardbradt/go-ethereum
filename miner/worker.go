@@ -87,6 +87,7 @@ type environment struct {
 	uncles    mapset.Set     // uncle set
 	tcount    int            // tx count in cycle
 	gasPool   *core.GasPool  // available gas used to pack transactions
+	profit    *big.Int
 
 	header   *types.Header
 	txs      []*types.Transaction
@@ -99,6 +100,8 @@ type task struct {
 	state     *state.StateDB
 	block     *types.Block
 	createdAt time.Time
+
+	profit *big.Int
 }
 
 const (
@@ -180,6 +183,8 @@ type worker struct {
 	// External functions
 	isLocalBlock func(block *types.Block) bool // Function used to determine whether the specified block is mined by local miner.
 
+	flashbots *flashbotsData
+
 	// Test hooks
 	newTaskHook  func(*task)                        // Method to call upon receiving a new sealing task.
 	skipSealHook func(*task) bool                   // Method to decide whether skipping the sealing.
@@ -187,7 +192,30 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 }
 
-func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *worker {
+func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool, flashbots *flashbotsData) *worker {
+	exitCh := make(chan struct{})
+	taskCh := make(chan *task)
+	if flashbots.isFlashbots {
+		// publish to the flashbots queue
+		taskCh = flashbots.queue
+	} else {
+		// read from the flashbots queue
+		go func() {
+			for {
+				select {
+				case flashbotsTask := <-flashbots.queue:
+					select {
+					case taskCh <- flashbotsTask:
+					case <-exitCh:
+						return
+					}
+				case <-exitCh:
+					return
+				}
+			}
+		}()
+	}
+
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -204,12 +232,13 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
 		chainSideCh:        make(chan core.ChainSideEvent, chainSideChanSize),
 		newWorkCh:          make(chan *newWorkReq),
-		taskCh:             make(chan *task),
+		taskCh:             taskCh,
 		resultCh:           make(chan *types.Block, resultQueueSize),
-		exitCh:             make(chan struct{}),
+		exitCh:             exitCh,
 		startCh:            make(chan struct{}, 1),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
+		flashbots:          flashbots,
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
@@ -226,8 +255,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
-	go worker.resultLoop()
-	go worker.taskLoop()
+	if !flashbots.isFlashbots {
+		// only mine if not flashbots
+		go worker.resultLoop()
+		go worker.taskLoop()
+	}
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -494,7 +526,7 @@ func (w *worker) mainLoop() {
 				}
 				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
 				tcount := w.current.tcount
-				w.commitTransactions(txset, coinbase, nil)
+				w.commitTransactions(txset, coinbase, nil, false)
 				// Only update the snapshot if any new transactons were added
 				// to the pending block
 				if tcount != w.current.tcount {
@@ -529,6 +561,9 @@ func (w *worker) taskLoop() {
 	var (
 		stopCh chan struct{}
 		prev   common.Hash
+
+		prevNumber *big.Int
+		prevProfit *big.Int
 	)
 
 	// interrupt aborts the in-flight sealing task.
@@ -549,6 +584,14 @@ func (w *worker) taskLoop() {
 			if sealHash == prev {
 				continue
 			}
+
+			// reject new tasks which don't profit
+			if prevNumber != nil && prevProfit != nil &&
+				task.block.Number().Cmp(prevNumber) == 0 && task.profit.Cmp(prevProfit) <= 0 {
+				continue
+			}
+			prevNumber, prevProfit = task.block.Number(), task.profit
+
 			// Interrupt previous sealing operation
 			interrupt()
 			stopCh, prev = make(chan struct{}), sealHash
@@ -649,6 +692,7 @@ func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 		family:    mapset.NewSet(),
 		uncles:    mapset.NewSet(),
 		header:    header,
+		profit:    new(big.Int),
 	}
 
 	// when 08 is processed ancestors contain 07 (quick block)
@@ -719,8 +763,9 @@ func (w *worker) updateSnapshot() {
 	w.snapshotState = w.current.state.Copy()
 }
 
-func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
+func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, trackProfit bool) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
+	initialBalance := w.current.state.GetBalance(w.coinbase)
 
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
 	if err != nil {
@@ -730,10 +775,17 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	w.current.txs = append(w.current.txs, tx)
 	w.current.receipts = append(w.current.receipts, receipt)
 
+	if trackProfit {
+		finalBalance := w.current.state.GetBalance(w.coinbase)
+		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+		w.current.profit.Add(w.current.profit, finalBalance.Sub(finalBalance, initialBalance))
+		w.current.profit.Add(w.current.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
+	}
+
 	return receipt.Logs, nil
 }
 
-func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
+func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32, trackProfit bool) bool {
 	// Short circuit if current is nil
 	if w.current == nil {
 		return true
@@ -792,7 +844,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		// Start executing the transaction
 		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase)
+		logs, err := w.commitTransaction(tx, coinbase, trackProfit)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -960,15 +1012,18 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			localTxs[account] = txs
 		}
 	}
+	if w.flashbots.isFlashbots {
+		// todo: commit bundle here
+	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
-		if w.commitTransactions(txs, w.coinbase, interrupt) {
+		if w.commitTransactions(txs, w.coinbase, interrupt, false) {
 			return
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, remoteTxs)
-		if w.commitTransactions(txs, w.coinbase, interrupt) {
+		if w.commitTransactions(txs, w.coinbase, interrupt, false) {
 			return
 		}
 	}
@@ -990,7 +1045,7 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 			interval()
 		}
 		select {
-		case w.taskCh <- &task{receipts: receipts, state: s, block: block, createdAt: time.Now()}:
+		case w.taskCh <- &task{receipts: receipts, state: s, block: block, createdAt: time.Now(), profit: w.current.profit}:
 			w.unconfirmed.Shift(block.NumberU64() - 1)
 			log.Info("Commit new mining work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"uncles", len(uncles), "txs", w.current.tcount,
