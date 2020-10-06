@@ -777,10 +777,10 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 
 	if trackProfit {
 		finalBalance := w.current.state.GetBalance(w.coinbase)
-		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 		w.current.profit.Add(w.current.profit, finalBalance.Sub(finalBalance, initialBalance))
-		w.current.profit.Add(w.current.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
 	}
+	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+	w.current.profit.Add(w.current.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
 
 	return receipt.Logs, nil
 }
