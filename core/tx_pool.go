@@ -490,6 +490,16 @@ func (pool *TxPool) Pending() (map[common.Address]types.Transactions, error) {
 	return pending, nil
 }
 
+// MevBundles returns a list of bundles valid for the given blockNumber/blockTimestamp
+func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.Transactions, error) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	// TODO: fill this in the however the Mev RPC is working
+	bundles := make([]types.Transactions, 0)
+	return bundles, nil
+}
+
 // Locals retrieves the accounts currently considered local by the pool.
 func (pool *TxPool) Locals() []common.Address {
 	pool.mu.Lock()
