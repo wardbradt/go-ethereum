@@ -526,7 +526,7 @@ func (w *worker) mainLoop() {
 				}
 				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs)
 				tcount := w.current.tcount
-				w.commitTransactions(txset, coinbase, nil, false)
+				w.commitTransactions(txset, coinbase, nil)
 				// Only update the snapshot if any new transactons were added
 				// to the pending block
 				if tcount != w.current.tcount {
@@ -785,7 +785,117 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	return receipt.Logs, nil
 }
 
-func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32, trackProfit bool) bool {
+func (w *worker) commitBundle(txs types.Transactions, coinbase common.Address, interrupt *int32) bool {
+	// Short circuit if current is nil
+	if w.current == nil {
+		return true
+	}
+
+	if w.current.gasPool == nil {
+		w.current.gasPool = new(core.GasPool).AddGas(w.current.header.GasLimit)
+	}
+
+	var coalescedLogs []*types.Log
+
+	for _, tx := range txs {
+		// In the following three cases, we will interrupt the execution of the transaction.
+		// (1) new head block event arrival, the interrupt signal is 1
+		// (2) worker start or restart, the interrupt signal is 1
+		// (3) worker recreate the mining block with any newly arrived transactions, the interrupt signal is 2.
+		// For the first two cases, the semi-finished work will be discarded.
+		// For the third case, the semi-finished work will be submitted to the consensus engine.
+		if interrupt != nil && atomic.LoadInt32(interrupt) != commitInterruptNone {
+			// Notify resubmit loop to increase resubmitting interval due to too frequent commits.
+			if atomic.LoadInt32(interrupt) == commitInterruptResubmit {
+				ratio := float64(w.current.header.GasLimit-w.current.gasPool.Gas()) / float64(w.current.header.GasLimit)
+				if ratio < 0.1 {
+					ratio = 0.1
+				}
+				w.resubmitAdjustCh <- &intervalAdjust{
+					ratio: ratio,
+					inc:   true,
+				}
+			}
+			return atomic.LoadInt32(interrupt) == commitInterruptNewHead
+		}
+		// If we don't have enough gas for any further transactions then we're done
+		if w.current.gasPool.Gas() < params.TxGas {
+			log.Trace("Not enough gas for further transactions", "have", w.current.gasPool, "want", params.TxGas)
+			break
+		}
+		if tx == nil {
+			log.Error("Unexpected nil transaction in bundle")
+			return true
+		}
+		// Error may be ignored here. The error has already been checked
+		// during transaction acceptance is the transaction pool.
+		//
+		// We use the eip155 signer regardless of the current hf.
+		from, _ := types.Sender(w.current.signer, tx)
+		// Check whether the tx is replay protected. If we're not in the EIP155 hf
+		// phase, start ignoring the sender until we do.
+		if tx.Protected() && !w.chainConfig.IsEIP155(w.current.header.Number) {
+			log.Debug("Unexpected protected transaction in bundle")
+			return true
+		}
+		// Start executing the transaction
+		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
+
+		logs, err := w.commitTransaction(tx, coinbase, true)
+		switch err {
+		case core.ErrGasLimitReached:
+			// Pop the current out-of-gas transaction without shifting in the next from the account
+			log.Error("Unexpected gas limit exceeded for current block in the bundle", "sender", from)
+			return true
+
+		case core.ErrNonceTooLow:
+			// New head notification data race between the transaction pool and miner, shift
+			log.Error("Transaction with low nonce in the bundle", "sender", from, "nonce", tx.Nonce())
+			return true
+
+		case core.ErrNonceTooHigh:
+			// Reorg notification data race between the transaction pool and miner, skip account =
+			log.Error("Account with high nonce in the bundle", "sender", from, "nonce", tx.Nonce())
+			return true
+
+		case nil:
+			// Everything ok, collect the logs and shift in the next transaction from the same account
+			coalescedLogs = append(coalescedLogs, logs...)
+			w.current.tcount++
+			continue
+
+		default:
+			// Strange error, discard the transaction and get the next in line (note, the
+			// nonce-too-high clause will prevent us from executing in vain).
+			log.Error("Transaction failed in the bundle", "hash", tx.Hash(), "err", err)
+			return true
+		}
+	}
+
+	if !w.isRunning() && len(coalescedLogs) > 0 {
+		// We don't push the pendingLogsEvent while we are mining. The reason is that
+		// when we are mining, the worker will regenerate a mining block every 3 seconds.
+		// In order to avoid pushing the repeated pendingLog, we disable the pending log pushing.
+
+		// make a copy, the state caches the logs and these logs get "upgraded" from pending to mined
+		// logs by filling in the block hash when the block was mined by the local miner. This can
+		// cause a race condition if a log was "upgraded" before the PendingLogsEvent is processed.
+		cpy := make([]*types.Log, len(coalescedLogs))
+		for i, l := range coalescedLogs {
+			cpy[i] = new(types.Log)
+			*cpy[i] = *l
+		}
+		w.pendingLogsFeed.Send(cpy)
+	}
+	// Notify resubmit loop to decrease resubmitting interval if current interval is larger
+	// than the user-specified one.
+	if interrupt != nil {
+		w.resubmitAdjustCh <- &intervalAdjust{inc: false}
+	}
+	return false
+}
+
+func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coinbase common.Address, interrupt *int32) bool {
 	// Short circuit if current is nil
 	if w.current == nil {
 		return true
@@ -844,7 +954,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		// Start executing the transaction
 		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase, trackProfit)
+		logs, err := w.commitTransaction(tx, coinbase, false)
 		switch err {
 		case core.ErrGasLimitReached:
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -1013,17 +1123,22 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		}
 	}
 	if w.flashbots.isFlashbots {
-		// todo: commit bundle here
+		bundles, err := w.eth.TxPool().MevBundles(header.Number, header.Time)
+		if err != nil {
+			log.Error("Failed to fetch pending transactions", "err", err)
+			return
+		}
+		w.commitBundle(bundles[0], w.coinbase, interrupt)
 	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
-		if w.commitTransactions(txs, w.coinbase, interrupt, false) {
+		if w.commitTransactions(txs, w.coinbase, interrupt) {
 			return
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, remoteTxs)
-		if w.commitTransactions(txs, w.coinbase, interrupt, false) {
+		if w.commitTransactions(txs, w.coinbase, interrupt) {
 			return
 		}
 	}
