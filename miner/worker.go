@@ -1129,7 +1129,9 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			log.Error("Failed to fetch pending transactions", "err", err)
 			return
 		}
-		w.commitBundle(maxBundle, w.coinbase, interrupt)
+		if w.commitBundle(maxBundle, w.coinbase, interrupt) {
+			return
+		}
 	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
