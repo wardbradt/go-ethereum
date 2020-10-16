@@ -587,7 +587,7 @@ func (w *worker) taskLoop() {
 
 			// reject new tasks which don't profit
 			if prevNumber != nil && prevProfit != nil &&
-				task.block.Number().Cmp(prevNumber) == 0 && task.profit.Cmp(prevProfit) <= 0 {
+				task.block.Number().Cmp(prevNumber) == 0 && task.profit.Cmp(prevProfit) < 0 {
 				continue
 			}
 			prevNumber, prevProfit = task.block.Number(), task.profit
