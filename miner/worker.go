@@ -1124,11 +1124,12 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	}
 	if w.flashbots.isFlashbots {
 		bundles, err := w.eth.TxPool().MevBundles(header.Number, header.Time)
+		maxBundle := w.findMostProfitableBundle(bundles, w.coinbase)
 		if err != nil {
 			log.Error("Failed to fetch pending transactions", "err", err)
 			return
 		}
-		w.commitBundle(bundles[0], w.coinbase, interrupt)
+		w.commitBundle(maxBundle, w.coinbase, interrupt)
 	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
@@ -1175,6 +1176,58 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 		w.updateSnapshot()
 	}
 	return nil
+}
+
+func (w *worker) findMostProfitableBundle(bundles []types.Transactions, coinbase common.Address) types.Transactions {
+	maxBundlePrice := big.NewInt(0)
+	maxBundle := types.Transactions{}
+	for _, bundle := range bundles {
+		if len(bundle) == 0 {
+			continue
+		}
+		mevGasPrice, err := w.computeBundleGas(bundle)
+		if err != nil {
+			// TODO: log the error?
+			continue
+		}
+		if mevGasPrice.Cmp(maxBundlePrice) > 0 {
+			maxBundle = bundle
+			maxBundlePrice = mevGasPrice
+		}
+	}
+
+	return maxBundle
+}
+
+// Compute the adjusted gas price for a whole bundle
+// Done by calculating all gas spent, adding transfers to the coinbase, and then dividing by gas used
+func (w *worker) computeBundleGas(bundle types.Transactions) (*big.Int, error) {
+	snap := w.current.state.Snapshot()
+	defer w.current.state.RevertToSnapshot(snap)
+
+	var totalGasUsed uint64 = 0
+	totalEth := big.NewInt(0)
+
+	coinbaseBalanceBefore := w.current.state.GetBalance(w.coinbase)
+
+	for _, tx := range bundle {
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+		if err != nil {
+			return nil, err
+		}
+		totalGasUsed += receipt.GasUsed
+		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+		ethSpent := gasUsed.Mul(gasUsed, tx.GasPrice())
+
+		totalEth.Add(totalEth, ethSpent)
+	}
+	coinbaseBalanceAfter := w.current.state.GetBalance(w.coinbase)
+	coinbaseDiff := coinbaseBalanceAfter.Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
+	totalEth.Add(totalEth, coinbaseDiff)
+
+	gasPrice := totalEth.Div(totalEth, new(big.Int).SetUint64(totalGasUsed))
+
+	return gasPrice, nil
 }
 
 // copyReceipts makes a deep copy of the given receipts.
