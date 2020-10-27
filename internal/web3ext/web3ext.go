@@ -907,3 +907,17 @@ web3._extend({
 	]
 });
 `
+
+const FlashBotJs = `
+web3._extend({
+	property: 'flashbot',
+	methods: [
+		new web3._extend.Method({
+			name: 'SendBundle',
+			call: 'flashbot_sendBundle',
+			params: 3
+		}),
+	],
+	properties: []
+});
+`
