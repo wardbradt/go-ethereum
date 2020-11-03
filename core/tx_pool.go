@@ -506,6 +506,11 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 		if blockNumber.Cmp(bundle.blockNumber) > 0 {
 			continue
 		}
+		if blockNumber.Cmp(bundle.blockNumber) < 0 {
+			// still include the bundle for the future, since this is for an upcoming block
+			bundles = append(bundles, bundle)
+			continue
+		}
 		txBundles = append(txBundles, bundle.txs)
 		bundles = append(bundles, bundle)
 	}
