@@ -503,7 +503,7 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 		if blockTimestamp > bundle.maxTimestamp {
 			continue
 		}
-		if blockNumber.Cmp(bundle.blockNumber) != 0 {
+		if blockNumber.Cmp(bundle.blockNumber) > 0 {
 			continue
 		}
 		txBundles = append(txBundles, bundle.txs)
