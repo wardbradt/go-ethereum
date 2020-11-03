@@ -134,7 +134,7 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Service:   NewPrivateAccountAPI(apiBackend, nonceLock),
 			Public:    false,
 		}, {
-			Namespace: "flashbot",
+			Namespace: "eth",
 			Version:   "1.0",
 			Service:   NewPrivateTxBundleAPI(apiBackend),
 			Public:    true,
