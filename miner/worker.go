@@ -595,7 +595,7 @@ func (w *worker) taskLoop() {
 			// Interrupt previous sealing operation
 			interrupt()
 			stopCh, prev = make(chan struct{}), sealHash
-
+			log.Info("Proposed miner block", "blockNumber", prevNumber, "profit", prevProfit)
 			if w.skipSealHook != nil && w.skipSealHook(task) {
 				continue
 			}
@@ -679,11 +679,10 @@ func (w *worker) resultLoop() {
 	}
 }
 
-// makeCurrent creates a new environment for the current cycle.
-func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
+func (w *worker) generateEnv(parent *types.Block, header *types.Header) (*environment, error) {
 	state, err := w.chain.StateAt(parent.Root())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	env := &environment{
 		signer:    types.NewEIP155Signer(w.chainConfig.ChainID),
@@ -706,6 +705,16 @@ func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
 
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
+	env.gasPool = new(core.GasPool).AddGas(header.GasLimit)
+	return env, nil
+}
+
+// makeCurrent creates a new environment for the current cycle.
+func (w *worker) makeCurrent(parent *types.Block, header *types.Header) error {
+	env, err := w.generateEnv(parent, header)
+	if err != nil {
+		return err
+	}
 	w.current = env
 	return nil
 }
@@ -789,10 +798,6 @@ func (w *worker) commitBundle(txs types.Transactions, coinbase common.Address, i
 	// Short circuit if current is nil
 	if w.current == nil {
 		return true
-	}
-
-	if w.current.gasPool == nil {
-		w.current.gasPool = new(core.GasPool).AddGas(w.current.header.GasLimit)
 	}
 
 	var coalescedLogs []*types.Log
@@ -899,10 +904,6 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 	// Short circuit if current is nil
 	if w.current == nil {
 		return true
-	}
-
-	if w.current.gasPool == nil {
-		w.current.gasPool = new(core.GasPool).AddGas(w.current.header.GasLimit)
 	}
 
 	var coalescedLogs []*types.Log
@@ -1124,11 +1125,12 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	}
 	if w.flashbots.isFlashbots {
 		bundles, err := w.eth.TxPool().MevBundles(header.Number, header.Time)
-		maxBundle := w.findMostProfitableBundle(bundles, w.coinbase)
+		maxBundle, bundlePrice := w.findMostProfitableBundle(bundles, w.coinbase, parent, header)
 		if err != nil {
 			log.Error("Failed to fetch pending transactions", "err", err)
 			return
 		}
+		log.Info("Flashbots bundle", "bundlePrice", bundlePrice, "bundleLength", len(maxBundle))
 		if w.commitBundle(maxBundle, w.coinbase, interrupt) {
 			return
 		}
@@ -1180,16 +1182,16 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	return nil
 }
 
-func (w *worker) findMostProfitableBundle(bundles []types.Transactions, coinbase common.Address) types.Transactions {
+func (w *worker) findMostProfitableBundle(bundles []types.Transactions, coinbase common.Address, parent *types.Block, header *types.Header) (types.Transactions, *big.Int) {
 	maxBundlePrice := big.NewInt(0)
 	maxBundle := types.Transactions{}
 	for _, bundle := range bundles {
 		if len(bundle) == 0 {
 			continue
 		}
-		mevGasPrice, err := w.computeBundleGas(bundle)
+		mevGasPrice, err := w.computeBundleGas(bundle, parent, header)
 		if err != nil {
-			// TODO: log the error?
+			log.Warn("Error computing gas for a bundle", "error", err)
 			continue
 		}
 		if mevGasPrice.Cmp(maxBundlePrice) > 0 {
@@ -1198,22 +1200,25 @@ func (w *worker) findMostProfitableBundle(bundles []types.Transactions, coinbase
 		}
 	}
 
-	return maxBundle
+	return maxBundle, maxBundlePrice
 }
 
 // Compute the adjusted gas price for a whole bundle
 // Done by calculating all gas spent, adding transfers to the coinbase, and then dividing by gas used
-func (w *worker) computeBundleGas(bundle types.Transactions) (*big.Int, error) {
-	snap := w.current.state.Snapshot()
-	defer w.current.state.RevertToSnapshot(snap)
+func (w *worker) computeBundleGas(bundle types.Transactions, parent *types.Block, header *types.Header) (*big.Int, error) {
+	env, err := w.generateEnv(parent, header)
+	if err != nil {
+		return nil, err
+	}
 
 	var totalGasUsed uint64 = 0
 	totalEth := big.NewInt(0)
+	var tempGasUsed uint64
 
-	coinbaseBalanceBefore := w.current.state.GetBalance(w.coinbase)
+	coinbaseBalanceBefore := env.state.GetBalance(w.coinbase)
 
 	for _, tx := range bundle {
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx, &tempGasUsed, *w.chain.GetVMConfig())
 		if err != nil {
 			return nil, err
 		}
@@ -1223,7 +1228,7 @@ func (w *worker) computeBundleGas(bundle types.Transactions) (*big.Int, error) {
 
 		totalEth.Add(totalEth, ethSpent)
 	}
-	coinbaseBalanceAfter := w.current.state.GetBalance(w.coinbase)
+	coinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
 	coinbaseDiff := coinbaseBalanceAfter.Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 	totalEth.Add(totalEth, coinbaseDiff)
 
