@@ -563,6 +563,11 @@ web3._extend({
 			params: 3,
 			inputFormatter: [web3._extend.formatters.inputAddressFormatter, null, web3._extend.formatters.inputBlockNumberFormatter]
 		}),
+		new web3._extend.Method({
+			name: 'sendBundle',
+			call: 'eth_sendBundle',
+			params: 3
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
@@ -905,19 +910,5 @@ web3._extend({
 			getter: 'lespay_requestStats'
 		}),
 	]
-});
-`
-
-const FlashBotJs = `
-web3._extend({
-	property: 'flashbot',
-	methods: [
-		new web3._extend.Method({
-			name: 'SendBundle',
-			call: 'flashbot_sendBundle',
-			params: 3
-		}),
-	],
-	properties: []
 });
 `
