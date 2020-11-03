@@ -25,5 +25,6 @@ import (
 type mevBundle struct {
 	txs          types.Transactions
 	blockNumber  *big.Int
+	minTimestamp uint64
 	maxTimestamp uint64
 }
