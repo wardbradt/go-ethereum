@@ -63,9 +63,8 @@ type TxPool struct {
 	chainDb      ethdb.Database
 	relay        TxRelayBackend
 	head         common.Hash
-	nonce        map[common.Address]uint64          // "pending" nonce
-	pending      map[common.Hash]*types.Transaction // pending transactions by tx hash
-	mevBundles   []mevBundle
+	nonce        map[common.Address]uint64            // "pending" nonce
+	pending      map[common.Hash]*types.Transaction   // pending transactions by tx hash
 	mined        map[common.Hash][]*types.Transaction // mined transactions by block hash
 	clearIdx     uint64                               // earliest block nr that can contain mined tx info
 
@@ -536,35 +535,10 @@ func (pool *TxPool) RemoveTx(hash common.Hash) {
 // MevBundles returns a list of bundles valid for the given blockNumber/blockTimestamp
 // also prunes bundles that are outdated
 func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.Transactions, error) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	var txBundles []types.Transactions
-	var bundles []mevBundle
-	for _, bundle := range pool.mevBundles {
-		if blockTimestamp > bundle.maxTimestamp {
-			continue
-		}
-		if blockNumber.Cmp(bundle.blockNumber) != 0 {
-			continue
-		}
-		txBundles = append(txBundles, bundle.txs)
-		bundles = append(bundles, bundle)
-	}
-
-	pool.mevBundles = bundles
-	return txBundles, nil
+	return nil, nil
 }
 
 // AddMevBundle adds a mev bundle to the pool
 func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, maxTimestamp uint64) error {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	pool.mevBundles = append(pool.mevBundles, mevBundle{
-		txs:          txs,
-		blockNumber:  blockNumber,
-		maxTimestamp: maxTimestamp,
-	})
 	return nil
 }
