@@ -1969,9 +1969,9 @@ func NewPrivateTxBundleAPI(b Backend) *PrivateTxBundleAPI {
 // The sender is responsible for signing the transaction and using the correct nonce and ensuring validity
 func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, encodedTxs []hexutil.Bytes, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64) error {
 	var txs types.Transactions
-	tx := new(types.Transaction)
 
 	for _, encodedTx := range encodedTxs {
+		tx := new(types.Transaction)
 		if err := rlp.DecodeBytes(encodedTx, tx); err != nil {
 			return err
 		}
