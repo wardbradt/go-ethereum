@@ -500,10 +500,10 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 	var txBundles []types.Transactions
 	var bundles []mevBundle
 	for _, bundle := range pool.mevBundles {
-		if blockTimestamp > bundle.maxTimestamp || blockNumber.Cmp(bundle.blockNumber) > 0 {
+		if (bundle.maxTimestamp != 0 && blockTimestamp > bundle.maxTimestamp) || blockNumber.Cmp(bundle.blockNumber) > 0 {
 			continue
 		}
-		if blockTimestamp < bundle.minTimestamp || blockNumber.Cmp(bundle.blockNumber) < 0 {
+		if (bundle.minTimestamp != 0 && blockTimestamp < bundle.minTimestamp) || blockNumber.Cmp(bundle.blockNumber) < 0 {
 			// still include the bundle for the future, since this is for an upcoming block
 			bundles = append(bundles, bundle)
 			continue

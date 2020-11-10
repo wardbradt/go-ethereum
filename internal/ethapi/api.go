@@ -1967,7 +1967,7 @@ func NewPrivateTxBundleAPI(b Backend) *PrivateTxBundleAPI {
 
 // SendBundle will add the signed transaction to the transaction pool.
 // The sender is responsible for signing the transaction and using the correct nonce and ensuring validity
-func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, encodedTxs []hexutil.Bytes, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64) error {
+func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, encodedTxs []hexutil.Bytes, blockNumber rpc.BlockNumber, minTimestampPtr, maxTimestampPtr *uint64) error {
 	var txs types.Transactions
 
 	for _, encodedTx := range encodedTxs {
@@ -1976,6 +1976,14 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, encodedTxs []hexuti
 			return err
 		}
 		txs = append(txs, tx)
+	}
+
+	var minTimestamp, maxTimestamp uint64
+	if minTimestampPtr != nil {
+		minTimestamp = *minTimestampPtr
+	}
+	if maxTimestampPtr != nil {
+		maxTimestamp = *maxTimestampPtr
 	}
 
 	return s.b.SendBundle(ctx, txs, blockNumber, minTimestamp, maxTimestamp)
