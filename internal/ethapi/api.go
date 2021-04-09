@@ -2115,10 +2115,11 @@ func NewPrivateTxBundleAPI(b Backend) *PrivateTxBundleAPI {
 
 // SendBundleArgs represents the arguments for a call.
 type SendBundleArgs struct {
-	Txs          []hexutil.Bytes `json:"txs"`
-	BlockNumber  rpc.BlockNumber `json:"blockNumber"`
-	MinTimestamp *uint64         `json:"minTimestamp"`
-	MaxTimestamp *uint64         `json:"maxTimestamp"`
+	Txs               []hexutil.Bytes `json:"txs"`
+	BlockNumber       rpc.BlockNumber `json:"blockNumber"`
+	MinTimestamp      *uint64         `json:"minTimestamp"`
+	MaxTimestamp      *uint64         `json:"maxTimestamp"`
+	RevertingTxHashes []common.Hash   `json:"revertingTxHashes"`
 }
 
 // SendBundle will add the signed transaction to the transaction pool.
@@ -2148,5 +2149,5 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 		maxTimestamp = *args.MaxTimestamp
 	}
 
-	return s.b.SendBundle(ctx, txs, args.BlockNumber, minTimestamp, maxTimestamp)
+	return s.b.SendBundle(ctx, txs, args.BlockNumber, minTimestamp, maxTimestamp, args.RevertingTxHashes)
 }

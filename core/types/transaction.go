@@ -534,8 +534,9 @@ func (m Message) AccessList() AccessList { return m.accessList }
 func (m Message) CheckNonce() bool       { return m.checkNonce }
 
 type MevBundle struct {
-	Txs          Transactions
-	BlockNumber  *big.Int
-	MinTimestamp uint64
-	MaxTimestamp uint64
+	Txs               Transactions
+	BlockNumber       *big.Int
+	MinTimestamp      uint64
+	MaxTimestamp      uint64
+	RevertingTxHashes []common.Hash
 }
