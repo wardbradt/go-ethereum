@@ -1148,16 +1148,15 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			log.Error("Failed to fetch pending transactions", "err", err)
 			return
 		}
-		bundle, numBundles, err := w.generateFlashbotsBundle(bundles, w.coinbase, parent, header)
+		bundle, err := w.generateFlashbotsBundle(bundles, w.coinbase, parent, header)
 		if err != nil {
 			log.Error("Failed to generate flashbots bundle", "err", err)
 			return
 		}
-		log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(bundle.totalEth), "gasUsed", bundle.totalGasUsed, "bundleScore", bundle.mevGasPrice, "bundleLength", len(bundle.txs), "numBundles", numBundles)
-		if len(bundle.txs) == 0 {
+		if len(bundle) == 0 {
 			return
 		}
-		if w.commitBundle(bundle.txs, w.coinbase, interrupt) {
+		if w.commitBundle(bundle, w.coinbase, interrupt) {
 			return
 		}
 	}
@@ -1210,16 +1209,16 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 }
 
 type simulatedBundle struct {
-	txs          types.Transactions
-	mevGasPrice  *big.Int
-	totalEth     *big.Int
-	totalGasUsed uint64
+	mevGasPrice    *big.Int
+	totalEth       *big.Int
+	totalGasUsed   uint64
+	originalBundle types.MevBundle
 }
 
-func (w *worker) generateFlashbotsBundle(bundles []types.Transactions, coinbase common.Address, parent *types.Block, header *types.Header) (simulatedBundle, int, error) {
+func (w *worker) generateFlashbotsBundle(bundles []types.MevBundle, coinbase common.Address, parent *types.Block, header *types.Header) (types.Transactions, error) {
 	simulatedBundles, err := w.simulateBundles(bundles, coinbase, parent, header)
 	if err != nil {
-		return simulatedBundle{}, 0, err
+		return nil, err
 	}
 
 	sort.SliceStable(simulatedBundles, func(i, j int) bool {
@@ -1228,13 +1227,13 @@ func (w *worker) generateFlashbotsBundle(bundles []types.Transactions, coinbase 
 
 	if len(simulatedBundles) > 0 {
 		bundle := simulatedBundles[0]
-		log.Info("Highest flashbots bundle", "ethToCoinbase", ethIntToFloat(bundle.totalEth), "gasUsed", bundle.totalGasUsed, "bundleScore", bundle.mevGasPrice, "bundleLength", len(bundle.txs))
+		log.Info("Highest flashbots bundle", "ethToCoinbase", ethIntToFloat(bundle.totalEth), "gasUsed", bundle.totalGasUsed, "bundleScore", bundle.mevGasPrice, "bundleLength", len(bundle.originalBundle.Txs))
 	}
 
 	return w.mergeBundles(simulatedBundles, parent, header)
 }
 
-func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, header *types.Header) (simulatedBundle, int, error) {
+func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, header *types.Header) (types.Transactions, error) {
 	// TODO: move tailGasPrice to txpool bundle
 	tailGasPrice := big.NewInt(100000000000) // 100 Gwei
 
@@ -1242,7 +1241,7 @@ func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, he
 
 	state, err := w.chain.StateAt(parent.Root())
 	if err != nil {
-		return simulatedBundle{}, 0, err
+		return nil, err
 	}
 	gasPool := new(core.GasPool).AddGas(header.GasLimit)
 
@@ -1257,32 +1256,28 @@ func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, he
 		prevState = state.Copy()
 		prevGasPool = new(core.GasPool).AddGas(gasPool.Gas())
 
-		simmed, err := w.computeBundleGas(bundle.txs, parent, header, state, gasPool)
+		simmed, err := w.computeBundleGas(bundle.originalBundle, parent, header, state, gasPool)
 		if err != nil || simmed.mevGasPrice.Cmp(tailGasPrice) < 0 || simmed.totalEth.Cmp(new(big.Int)) < 0 {
 			state = prevState
 			gasPool = prevGasPool
 			continue
 		}
-		log.Info("Included bundle", "ethToCoinbase", ethIntToFloat(simmed.totalEth), "gasUsed", simmed.totalGasUsed, "bundleScore", simmed.mevGasPrice, "bundleLength", len(simmed.txs))
-		finalBundle = append(finalBundle, bundle.txs...)
+		log.Info("Included bundle", "ethToCoinbase", ethIntToFloat(simmed.totalEth), "gasUsed", simmed.totalGasUsed, "bundleScore", simmed.mevGasPrice, "bundleLength", len(simmed.originalBundle.Txs))
+		finalBundle = append(finalBundle, simmed.originalBundle.Txs...)
 		totalEth.Add(totalEth, bundle.totalEth)
 		totalGasUsed += bundle.totalGasUsed
 		count++
 	}
 
 	if len(finalBundle) == 0 {
-		return simulatedBundle{}, 0, nil
+		return nil, nil
 	}
+	log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(totalEth), "gasUsed", totalGasUsed, "bundleScore", new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)), "bundleLength", len(finalBundle), "numBundles", count)
 
-	return simulatedBundle{
-		txs:          finalBundle,
-		mevGasPrice:  new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
-		totalEth:     totalEth,
-		totalGasUsed: totalGasUsed,
-	}, count, nil
+	return finalBundle, nil
 }
 
-func (w *worker) simulateBundles(bundles []types.Transactions, coinbase common.Address, parent *types.Block, header *types.Header) ([]simulatedBundle, error) {
+func (w *worker) simulateBundles(bundles []types.MevBundle, coinbase common.Address, parent *types.Block, header *types.Header) ([]simulatedBundle, error) {
 	simulatedBundles := []simulatedBundle{}
 
 	for _, bundle := range bundles {
@@ -1291,7 +1286,7 @@ func (w *worker) simulateBundles(bundles []types.Transactions, coinbase common.A
 			return nil, err
 		}
 		gasPool := new(core.GasPool).AddGas(header.GasLimit)
-		if len(bundle) == 0 {
+		if len(bundle.Txs) == 0 {
 			continue
 		}
 		simmed, err := w.computeBundleGas(bundle, parent, header, state, gasPool)
@@ -1309,14 +1304,14 @@ func (w *worker) simulateBundles(bundles []types.Transactions, coinbase common.A
 
 // Compute the adjusted gas price for a whole bundle
 // Done by calculating all gas spent, adding transfers to the coinbase, and then dividing by gas used
-func (w *worker) computeBundleGas(bundle types.Transactions, parent *types.Block, header *types.Header, state *state.StateDB, gasPool *core.GasPool) (simulatedBundle, error) {
+func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, header *types.Header, state *state.StateDB, gasPool *core.GasPool) (simulatedBundle, error) {
 	var totalGasUsed uint64 = 0
 	var tempGasUsed uint64
 	gasFees := new(big.Int)
 
 	coinbaseBalanceBefore := state.GetBalance(w.coinbase)
 
-	for _, tx := range bundle {
+	for _, tx := range bundle.Txs {
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, header, tx, &tempGasUsed, *w.chain.GetVMConfig())
 		if err != nil {
 			return simulatedBundle{}, err
@@ -1332,10 +1327,10 @@ func (w *worker) computeBundleGas(bundle types.Transactions, parent *types.Block
 	totalEth := new(big.Int).Sub(new(big.Int).Sub(coinbaseBalanceAfter, gasFees), coinbaseBalanceBefore)
 
 	return simulatedBundle{
-		txs:          bundle,
-		mevGasPrice:  new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
-		totalEth:     totalEth,
-		totalGasUsed: totalGasUsed,
+		mevGasPrice:    new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
+		totalEth:       totalEth,
+		totalGasUsed:   totalGasUsed,
+		originalBundle: bundle,
 	}, nil
 }
 
