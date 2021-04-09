@@ -1234,9 +1234,6 @@ func (w *worker) generateFlashbotsBundle(bundles []types.MevBundle, coinbase com
 }
 
 func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, header *types.Header) (types.Transactions, error) {
-	// TODO: move tailGasPrice to txpool bundle
-	tailGasPrice := big.NewInt(100000000000) // 100 Gwei
-
 	finalBundle := types.Transactions{}
 
 	state, err := w.chain.StateAt(parent.Root())
@@ -1257,7 +1254,7 @@ func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, he
 		prevGasPool = new(core.GasPool).AddGas(gasPool.Gas())
 
 		simmed, err := w.computeBundleGas(bundle.originalBundle, parent, header, state, gasPool)
-		if err != nil || simmed.mevGasPrice.Cmp(tailGasPrice) < 0 || simmed.totalEth.Cmp(new(big.Int)) < 0 {
+		if err != nil || simmed.mevGasPrice.Cmp(bundle.originalBundle.TailGas) < 0 || simmed.totalEth.Cmp(new(big.Int)) < 0 {
 			state = prevState
 			gasPool = prevGasPool
 			continue
@@ -1302,12 +1299,22 @@ func (w *worker) simulateBundles(bundles []types.MevBundle, coinbase common.Addr
 	return simulatedBundles, nil
 }
 
+func containsHash(arr []common.Hash, match common.Hash) bool {
+	for _, elem := range arr {
+		if elem == match {
+			return true
+		}
+	}
+	return false
+}
+
 // Compute the adjusted gas price for a whole bundle
 // Done by calculating all gas spent, adding transfers to the coinbase, and then dividing by gas used
 func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, header *types.Header, state *state.StateDB, gasPool *core.GasPool) (simulatedBundle, error) {
 	var totalGasUsed uint64 = 0
 	var tempGasUsed uint64
 	gasFees := new(big.Int)
+	adjustedGasFees := new(big.Int)
 
 	coinbaseBalanceBefore := state.GetBalance(w.coinbase)
 
@@ -1316,15 +1323,22 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 		if err != nil {
 			return simulatedBundle{}, err
 		}
-		if receipt.Status == types.ReceiptStatusFailed {
-			return nil, 0, errors.New("revert")
+		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
+			return simulatedBundle{}, errors.New("failed tx")
 		}
 
 		totalGasUsed += receipt.GasUsed
+		gasPrice := tx.GasPrice()
+		if gasPrice.Cmp(bundle.MaxGas) > 0 {
+			gasPrice = bundle.MaxGas
+		}
+
 		gasFees.Add(gasFees, new(big.Int).Mul(big.NewInt(int64(totalGasUsed)), tx.GasPrice()))
+		adjustedGasFees.Add(adjustedGasFees, new(big.Int).Mul(big.NewInt(int64(totalGasUsed)), gasPrice))
 	}
 	coinbaseBalanceAfter := state.GetBalance(w.coinbase)
 	totalEth := new(big.Int).Sub(new(big.Int).Sub(coinbaseBalanceAfter, gasFees), coinbaseBalanceBefore)
+	totalEth.Add(totalEth, adjustedGasFees)
 
 	return simulatedBundle{
 		mevGasPrice:    new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),

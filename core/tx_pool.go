@@ -536,15 +536,18 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 }
 
 // AddMevBundle adds a mev bundle to the pool
-func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, minTimestamp, maxTimestamp uint64) error {
+func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, minTimestamp, maxTimestamp uint64, maxGas *big.Int, tailGas *big.Int, revertingTxHashes []common.Hash) error {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
 	pool.mevBundles = append(pool.mevBundles, types.MevBundle{
-		Txs:          txs,
-		BlockNumber:  blockNumber,
-		MinTimestamp: minTimestamp,
-		MaxTimestamp: maxTimestamp,
+		Txs:               txs,
+		BlockNumber:       blockNumber,
+		MinTimestamp:      minTimestamp,
+		MaxTimestamp:      maxTimestamp,
+		MaxGas:            maxGas,
+		TailGas:           tailGas,
+		RevertingTxHashes: revertingTxHashes,
 	})
 	return nil
 }

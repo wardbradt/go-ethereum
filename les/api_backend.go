@@ -187,8 +187,8 @@ func (b *LesApiBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 func (b *LesApiBackend) RemoveTx(txHash common.Hash) {
 	b.eth.txPool.RemoveTx(txHash)
 }
-func (b *LesApiBackend) SendBundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64) error {
-	return b.eth.txPool.AddMevBundle(txs, big.NewInt(blockNumber.Int64()), minTimestamp, maxTimestamp)
+func (b *LesApiBackend) SendBundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64, maxGas *big.Int, tailGas *big.Int, revertingTxHashes []common.Hash) error {
+	return b.eth.txPool.AddMevBundle(txs, big.NewInt(blockNumber.Int64()), minTimestamp, maxTimestamp, maxGas, tailGas, revertingTxHashes)
 }
 
 func (b *LesApiBackend) GetPoolTransactions() (types.Transactions, error) {
