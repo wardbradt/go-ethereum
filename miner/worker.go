@@ -787,9 +787,8 @@ func (w *worker) updateSnapshot() {
 	w.snapshotState = w.current.state.Copy()
 }
 
-func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address, trackProfit bool) ([]*types.Log, error) {
+func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
 	snap := w.current.state.Snapshot()
-	initialBalance := w.current.state.GetBalance(w.coinbase)
 
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &coinbase, w.current.gasPool, w.current.state, w.current.header, tx, &w.current.header.GasUsed, *w.chain.GetVMConfig())
 	if err != nil {
@@ -799,14 +798,8 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	w.current.txs = append(w.current.txs, tx)
 	w.current.receipts = append(w.current.receipts, receipt)
 
-	// coinbase balance difference already contains gas fee
-	if trackProfit {
-		finalBalance := w.current.state.GetBalance(w.coinbase)
-		w.current.profit.Add(w.current.profit, new(big.Int).Sub(finalBalance, initialBalance))
-	} else {
-		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-		w.current.profit.Add(w.current.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
-	}
+	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+	w.current.profit.Add(w.current.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
 
 	return receipt.Logs, nil
 }
@@ -863,7 +856,7 @@ func (w *worker) commitBundle(txs types.Transactions, coinbase common.Address, i
 		// Start executing the transaction
 		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase, true)
+		logs, err := w.commitTransaction(tx, coinbase)
 		switch err {
 		case core.ErrGasLimitReached:
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -972,7 +965,7 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 		// Start executing the transaction
 		w.current.state.Prepare(tx.Hash(), common.Hash{}, w.current.tcount)
 
-		logs, err := w.commitTransaction(tx, coinbase, false)
+		logs, err := w.commitTransaction(tx, coinbase)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -1159,6 +1152,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		if w.commitBundle(bundle.originalBundle.Txs, w.coinbase, interrupt) {
 			return
 		}
+		w.current.profit.Add(w.current.profit, bundle.totalEth).Sub(w.current.profit, bundle.gasFees)
 	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
@@ -1211,6 +1205,7 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 type simulatedBundle struct {
 	mevGasPrice    *big.Int
 	totalEth       *big.Int
+	gasFees        *big.Int
 	totalGasUsed   uint64
 	originalBundle types.MevBundle
 }
@@ -1257,6 +1252,7 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 	var totalGasUsed uint64 = 0
 	var tempGasUsed uint64
 	totalEth := new(big.Int)
+	gasFees := new(big.Int)
 
 	for _, tx := range bundle.Txs {
 		coinbaseBalanceBefore := state.GetBalance(w.coinbase)
@@ -1291,16 +1287,19 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 		coinbaseBalanceAfter := state.GetBalance(w.coinbase)
 		totalEth = totalEth.Add(totalEth, coinbaseBalanceAfter.Sub(coinbaseBalanceAfter, coinbaseBalanceBefore))
 
+		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 		if txInPendingPool {
 			// If tx is in pending pool, ignore the gas fees
-			gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 			totalEth.Sub(totalEth, gasUsed.Mul(gasUsed, tx.GasPrice()))
+		} else {
+			gasFees.Add(gasFees, gasUsed.Mul(gasUsed, tx.GasPrice()))
 		}
 	}
 
 	return simulatedBundle{
 		mevGasPrice:    new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
 		totalEth:       totalEth,
+		gasFees:        gasFees,
 		totalGasUsed:   totalGasUsed,
 		originalBundle: bundle,
 	}, nil
