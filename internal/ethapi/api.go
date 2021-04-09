@@ -2134,11 +2134,13 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 	if args.BlockNumber == 0 {
 		return errors.New("bundle missing blockNumber")
 	}
-	if args.MaxGas == nil {
-		return errors.New("bundle missing maxGas")
+	maxGas := new(big.Int)
+	if args.MaxGas != nil {
+		maxGas = args.MaxGas.ToInt()
 	}
-	if args.TailGas == nil {
-		return errors.New("bundle missing tailGas")
+	tailGas := new(big.Int)
+	if args.TailGas != nil {
+		tailGas = args.TailGas.ToInt()
 	}
 
 	for _, encodedTx := range args.Txs {
@@ -2157,5 +2159,5 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 		maxTimestamp = *args.MaxTimestamp
 	}
 
-	return s.b.SendBundle(ctx, txs, args.BlockNumber, minTimestamp, maxTimestamp, args.MaxGas.ToInt(), args.TailGas.ToInt(), args.RevertingTxHashes)
+	return s.b.SendBundle(ctx, txs, args.BlockNumber, minTimestamp, maxTimestamp, maxGas, tailGas, args.RevertingTxHashes)
 }
