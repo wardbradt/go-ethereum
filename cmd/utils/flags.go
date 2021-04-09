@@ -463,6 +463,10 @@ var (
 		Usage: "Time interval to recreate the block being mined",
 		Value: ethconfig.Defaults.Miner.Recommit,
 	}
+	MinerStrictProfitSwitchFlag = cli.DurationFlag{
+		Name:  "miner.strictprofitswitch",
+		Usage: "flashbots - Time interval to wait on both bundle & plain block worker",
+	}
 	MinerNoVerfiyFlag = cli.BoolFlag{
 		Name:  "miner.noverify",
 		Usage: "Disable remote sealing verification",
@@ -1384,6 +1388,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	}
 	if ctx.GlobalIsSet(MinerNoVerfiyFlag.Name) {
 		cfg.Noverify = ctx.GlobalBool(MinerNoVerfiyFlag.Name)
+	}
+	if ctx.GlobalIsSet(MinerStrictProfitSwitchFlag.Name) {
+		cfg.StrictProfitWait = ctx.GlobalDuration(MinerStrictProfitSwitchFlag.Name)
 	}
 }
 
