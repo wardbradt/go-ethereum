@@ -74,7 +74,17 @@ func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine cons
 	}
 }
 
+type BundleBlock struct {
+	HD  *types.Header
+	Txs types.Transactions
+}
+
+var (
+	IncomingBundleBlock = make(chan BundleBlock)
+)
+
 type flashbotsData struct {
 	isFlashbots bool
 	queue       chan *task
+	bundleBlock chan BundleBlock
 }

@@ -75,8 +75,14 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		worker:  newMultiWorker(config, chainConfig, engine, eth, mux, isLocalBlock, true),
 	}
 	go miner.update()
-
+	go miner.acceptBundleBlock()
 	return miner
+}
+
+func (miner *Miner) acceptBundleBlock() {
+	// for b := range IncomingBundleBlock {
+	// 	//
+	// }
 }
 
 // update keeps track of the downloader events. Please be aware that this is a one shot type of update loop.

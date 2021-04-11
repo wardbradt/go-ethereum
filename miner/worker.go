@@ -816,6 +816,10 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	return receipt.Logs, nil
 }
 
+func (w *worker) commitBlockBundle(txs types.Transactions, header *types.Header) bool {
+	return true
+}
+
 func (w *worker) commitBundle(txs types.Transactions, coinbase common.Address, interrupt *int32) bool {
 	// Short circuit if current is nil
 	if w.current == nil {
@@ -1185,6 +1189,7 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 	receipts := copyReceipts(w.current.receipts)
 	s := w.current.state.Copy()
 	block, err := w.engine.FinalizeAndAssemble(w.chain, w.current.header, s, w.current.txs, uncles, receipts)
+	// now here to hit it - compare it against finalize
 	if err != nil {
 		return err
 	}
