@@ -10,6 +10,15 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+type BundleBlock struct {
+	HD  *types.Header
+	Txs types.Transactions
+}
+
+var (
+	IncomingBundleBlock = make(chan BundleBlock)
+)
+
 type multiWorker struct {
 	regularWorker   *worker
 	flashbotsWorker *worker

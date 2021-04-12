@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -2135,4 +2136,32 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, encodedTxs []hexuti
 	}
 
 	return s.b.SendBundle(ctx, txs, blockNumber, minTimestamp, maxTimestamp)
+}
+
+func (s *PrivateTxBundleAPI) SendBlock(
+	ctx context.Context, encodedHeader hexutil.Bytes, encodedTxs []hexutil.Bytes,
+) error {
+	var (
+		hd  *types.Header
+		txs types.Transactions
+	)
+
+	if err := rlp.DecodeBytes(encodedHeader, &hd); err != nil {
+		return err
+	}
+
+	for _, encodedTx := range encodedTxs {
+		tx := new(types.Transaction)
+		if err := rlp.DecodeBytes(encodedTx, tx); err != nil {
+			return err
+		}
+		txs = append(txs, tx)
+	}
+
+	miner.IncomingBundleBlock <- miner.BundleBlock{
+		HD:  hd,
+		Txs: txs,
+	}
+
+	return nil
 }

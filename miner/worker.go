@@ -470,8 +470,14 @@ func (w *worker) mainLoop() {
 
 	for {
 		select {
+
+		case bundleBlock := <-IncomingBundleBlock:
+			// TODO move interrupt to worker ?
+			interrupt := new(int32)
+			w.commitNewWork(interrupt, true, time.Now().Unix(), &bundleBlock)
+
 		case req := <-w.newWorkCh:
-			w.commitNewWork(req.interrupt, req.noempty, req.timestamp)
+			w.commitNewWork(req.interrupt, req.noempty, req.timestamp, nil)
 
 		case ev := <-w.chainSideCh:
 			// Short circuit for duplicate side blocks
@@ -545,7 +551,7 @@ func (w *worker) mainLoop() {
 				// submit mining work here since all empty submission will be rejected
 				// by clique. Of course the advance sealing(empty submission) is disabled.
 				if w.chainConfig.Clique != nil && w.chainConfig.Clique.Period == 0 {
-					w.commitNewWork(nil, true, time.Now().Unix())
+					w.commitNewWork(nil, true, time.Now().Unix(), nil)
 				}
 			}
 			atomic.AddInt32(&w.newTxs, int32(len(ev.Txs)))
@@ -1032,7 +1038,10 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 }
 
 // commitNewWork generates several new sealing tasks based on the parent block.
-func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) {
+func (w *worker) commitNewWork(
+	interrupt *int32, noempty bool, timestamp int64,
+	override *BundleBlock,
+) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	tstart := time.Now()
@@ -1049,6 +1058,11 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		Extra:      w.extra,
 		Time:       uint64(timestamp),
 	}
+
+	if override != nil && override.HD != nil {
+		header = override.HD
+	}
+
 	// Only set the coinbase if our consensus engine is running (avoid spurious block rewards)
 	if w.isRunning() {
 		if w.coinbase == (common.Address{}) {
@@ -1133,8 +1147,25 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		w.updateSnapshot()
 		return
 	}
+
 	// Split the pending transactions into locals and remotes
 	localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
+
+	if override != nil && override.Txs != nil {
+
+		for _, t := range override.Txs {
+			sender, _ := w.current.signer.Sender(t)
+			localTxs[sender] = append(localTxs[sender], t)
+		}
+		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
+		if w.commitTransactions(txs, w.coinbase, interrupt) {
+			return
+		}
+
+		w.commit(uncles, w.fullTaskHook, true, tstart)
+		return
+	}
+
 	for _, account := range w.eth.TxPool().Locals() {
 		if txs := remoteTxs[account]; len(txs) > 0 {
 			delete(remoteTxs, account)
