@@ -470,12 +470,11 @@ func (w *worker) mainLoop() {
 
 	for {
 		select {
-
 		case bundleBlock := <-IncomingBundleBlock:
-			// TODO move interrupt to worker ?
-			interrupt := new(int32)
-			w.commitNewWork(interrupt, true, time.Now().Unix(), &bundleBlock)
-
+			if w.flashbots.acceptFullBlocks {
+				interrupt := new(int32)
+				w.commitNewWork(interrupt, true, time.Now().Unix(), &bundleBlock)
+			}
 		case req := <-w.newWorkCh:
 			w.commitNewWork(req.interrupt, req.noempty, req.timestamp, nil)
 
