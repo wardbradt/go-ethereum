@@ -470,7 +470,8 @@ func (w *worker) mainLoop() {
 
 	for {
 		select {
-		case bundleBlock := <-IncomingBundleBlock:
+		case bundleBlock := <-w.flashbots.fullBlock:
+			// NOTE technically not needed
 			if w.flashbots.acceptFullBlocks {
 				interrupt := new(int32)
 				w.commitNewWork(interrupt, true, time.Now().Unix(), &bundleBlock)

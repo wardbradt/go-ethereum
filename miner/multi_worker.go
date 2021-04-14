@@ -81,22 +81,26 @@ func (w *multiWorker) disablePreseal() {
 
 func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *multiWorker {
 	queue := make(chan *task)
+	stubChan := make(chan BundleBlock)
 
 	return &multiWorker{
 		regularWorker: newWorker(
 			config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
-				queue: queue,
+				queue:     queue,
+				fullBlock: stubChan,
 			}),
 		flashbotsWorker: newWorker(
 			config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
 				isFlashbots: true,
 				queue:       queue,
+				fullBlock:   stubChan,
 			}),
 		flashbotsFullBlockWorker: newWorker(
 			config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
 				isFlashbots:      true,
 				acceptFullBlocks: true,
 				queue:            queue,
+				fullBlock:        IncomingBundleBlock,
 			}),
 	}
 }
@@ -105,4 +109,5 @@ type flashbotsData struct {
 	isFlashbots      bool
 	acceptFullBlocks bool
 	queue            chan *task
+	fullBlock        chan BundleBlock
 }
