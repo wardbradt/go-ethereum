@@ -126,6 +126,7 @@ var (
 		utils.MinerRecommitIntervalFlag,
 		utils.MinerNoVerfiyFlag,
 		utils.MinerStrictProfitSwitchFlag,
+		utils.MinerProxyContractAddress,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
 		utils.DiscoveryV5Flag,

@@ -1217,7 +1217,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		if w.commitBundle(bundle.originalBundle.Txs, w.coinbase, interrupt) {
 			return
 		}
-		w.current.profit.Add(w.current.profit, bundle.totalEth).Sub(w.current.profit, bundle.gasFees)
+		w.current.profit.Add(w.current.profit, bundle.ethSentToCoinbase)
 	}
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
@@ -1269,15 +1269,15 @@ func (w *worker) commit(uncles []*types.Header, interval func(), update bool, st
 }
 
 type simulatedBundle struct {
-	mevGasPrice    *big.Int
-	totalEth       *big.Int
-	gasFees        *big.Int
-	totalGasUsed   uint64
-	originalBundle types.MevBundle
+	mevGasPrice       *big.Int
+	totalEth          *big.Int
+	ethSentToCoinbase *big.Int
+	totalGasUsed      uint64
+	originalBundle    types.MevBundle
 }
 
 func (w *worker) findMostProfitableBundle(bundles []types.MevBundle, coinbase common.Address, parent *types.Block, header *types.Header, pendingTxs map[common.Address]types.Transactions) (simulatedBundle, error) {
-	maxBundle := simulatedBundle{mevGasPrice: new(big.Int)}
+	maxBundle := simulatedBundle{}
 
 	for _, bundle := range bundles {
 		state, err := w.chain.StateAt(parent.Root())
@@ -1295,7 +1295,7 @@ func (w *worker) findMostProfitableBundle(bundles []types.MevBundle, coinbase co
 			continue
 		}
 
-		if simmed.mevGasPrice.Cmp(maxBundle.mevGasPrice) > 0 {
+		if maxBundle.mevGasPrice == nil || maxBundle.mevGasPrice.Cmp(maxBundle.mevGasPrice) > 0 {
 			maxBundle = simmed
 		}
 	}
@@ -1317,11 +1317,11 @@ func containsHash(arr []common.Hash, match common.Hash) bool {
 func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, header *types.Header, state *state.StateDB, gasPool *core.GasPool, pendingTxs map[common.Address]types.Transactions) (simulatedBundle, error) {
 	var totalGasUsed uint64 = 0
 	var tempGasUsed uint64
-	totalEth := new(big.Int)
 	gasFees := new(big.Int)
 
+	ethSentToCoinbase := new(big.Int)
+
 	for _, tx := range bundle.Txs {
-		coinbaseBalanceBefore := state.GetBalance(w.coinbase)
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, header, tx, &tempGasUsed, *w.chain.GetVMConfig())
 		if err != nil {
 			return simulatedBundle{}, err
@@ -1338,8 +1338,8 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 		}
 
 		txInPendingPool := false
-		// check if tx is in pending pool
 		if accountTxs, ok := pendingTxs[from]; ok {
+			// check if tx is in pending pool
 			txNonce := tx.Nonce()
 
 			for _, accountTx := range accountTxs {
@@ -1350,24 +1350,36 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 			}
 		}
 
-		coinbaseBalanceAfter := state.GetBalance(w.coinbase)
-		totalEth = totalEth.Add(totalEth, coinbaseBalanceAfter.Sub(coinbaseBalanceAfter, coinbaseBalanceBefore))
-
-		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-		if txInPendingPool {
-			// If tx is in pending pool, ignore the gas fees
-			totalEth.Sub(totalEth, gasUsed.Mul(gasUsed, tx.GasPrice()))
-		} else {
+		if !txInPendingPool {
+			// If tx is not in pending pool, count the gas fees
+			gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 			gasFees.Add(gasFees, gasUsed.Mul(gasUsed, tx.GasPrice()))
+		}
+
+		for _, l := range receipt.Logs {
+			if l.Address == w.config.ProxyPaymentAddress && len(l.Topics) > 0 && l.Topics[0] == proxyPaymentTopic {
+				event := new(ProxyFlashbotsPayment)
+
+				if err := proxyABI.UnpackIntoInterface(event, "FlashbotsPayment", l.Data); err != nil {
+					log.Error("Error parsing FlashbotsPayment event log", "err", err)
+					return simulatedBundle{}, err
+				}
+
+				if event.Coinbase == header.Coinbase {
+					ethSentToCoinbase.Add(ethSentToCoinbase, event.Amount)
+				}
+			}
 		}
 	}
 
+	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
+
 	return simulatedBundle{
-		mevGasPrice:    new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
-		totalEth:       totalEth,
-		gasFees:        gasFees,
-		totalGasUsed:   totalGasUsed,
-		originalBundle: bundle,
+		mevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
+		totalEth:          totalEth,
+		ethSentToCoinbase: ethSentToCoinbase,
+		totalGasUsed:      totalGasUsed,
+		originalBundle:    bundle,
 	}, nil
 }
 
