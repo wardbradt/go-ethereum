@@ -1295,7 +1295,7 @@ func (w *worker) findMostProfitableBundle(bundles []types.MevBundle, coinbase co
 			continue
 		}
 
-		if maxBundle.mevGasPrice == nil || maxBundle.mevGasPrice.Cmp(maxBundle.mevGasPrice) > 0 {
+		if maxBundle.mevGasPrice == nil || simmed.mevGasPrice.Cmp(maxBundle.mevGasPrice) > 0 {
 			maxBundle = simmed
 		}
 	}
