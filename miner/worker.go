@@ -1314,7 +1314,7 @@ func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, he
 		prevState = state.Copy()
 		prevGasPool = new(core.GasPool).AddGas(gasPool.Gas())
 
-		simmed, err := w.computeBundleGas(bundle.originalBundle, parent, header, state, gasPool, pendingTxs)
+		simmed, err := w.computeBundleGas(bundle.originalBundle, parent, header, state, gasPool, pendingTxs, len(finalBundle))
 		if err != nil || simmed.totalEth.Cmp(new(big.Int)) < 0 {
 			state = prevState
 			gasPool = prevGasPool
@@ -1358,7 +1358,7 @@ func (w *worker) simulateBundles(bundles []types.MevBundle, coinbase common.Addr
 		if len(bundle.Txs) == 0 {
 			continue
 		}
-		simmed, err := w.computeBundleGas(bundle, parent, header, state, gasPool, pendingTxs)
+		simmed, err := w.computeBundleGas(bundle, parent, header, state, gasPool, pendingTxs, 0)
 
 		if err != nil {
 			log.Debug("Error computing gas for a bundle", "error", err)
@@ -1381,14 +1381,16 @@ func containsHash(arr []common.Hash, match common.Hash) bool {
 
 // Compute the adjusted gas price for a whole bundle
 // Done by calculating all gas spent, adding transfers to the coinbase, and then dividing by gas used
-func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, header *types.Header, state *state.StateDB, gasPool *core.GasPool, pendingTxs map[common.Address]types.Transactions) (simulatedBundle, error) {
+func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, header *types.Header, state *state.StateDB, gasPool *core.GasPool, pendingTxs map[common.Address]types.Transactions, currentTxCount int) (simulatedBundle, error) {
 	var totalGasUsed uint64 = 0
 	var tempGasUsed uint64
 	gasFees := new(big.Int)
 
 	ethSentToCoinbase := new(big.Int)
 
-	for _, tx := range bundle.Txs {
+	for i, tx := range bundle.Txs {
+		w.current.state.Prepare(tx.Hash(), common.Hash{}, i+currentTxCount)
+
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, header, tx, &tempGasUsed, *w.chain.GetVMConfig())
 		if err != nil {
 			return simulatedBundle{}, err
