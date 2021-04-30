@@ -1389,7 +1389,7 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 	ethSentToCoinbase := new(big.Int)
 
 	for i, tx := range bundle.Txs {
-		w.current.state.Prepare(tx.Hash(), common.Hash{}, i+currentTxCount)
+		state.Prepare(tx.Hash(), common.Hash{}, i+currentTxCount)
 
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, header, tx, &tempGasUsed, *w.chain.GetVMConfig())
 		if err != nil {
@@ -1433,8 +1433,7 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 					log.Error("Error parsing FlashbotsPayment event log", "err", err)
 					return simulatedBundle{}, err
 				}
-
-				if event.Coinbase == header.Coinbase {
+				if event.Coinbase == w.coinbase {
 					ethSentToCoinbase.Add(ethSentToCoinbase, event.Amount)
 				}
 			}
