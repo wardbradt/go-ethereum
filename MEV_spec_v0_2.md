@@ -135,7 +135,7 @@ Any bundle that is correctly constructed `MAY` have a `minTimestamp` and/or a `m
 
 `MEV bundles` `MUST` be sorted by their `bundle adjusted gas price` first and then one by one added to the block as long as there is any gas left in the block and number of bundles added is less or equal the `MaxMergedBundles` parameter. The remaining block gas `SHOULD` be used for non-MEV transactions.
 
-Block 'MUST' contain between 0 and `MaxMergedBundles` bundles.
+Block `MUST` contain between 0 and `MaxMergedBundles` bundles.
 
 A block with bundles `MUST` place the bundles at the beginning of the block and `MUST NOT` insert any transactions between the bundles or bundle transactions.
 
