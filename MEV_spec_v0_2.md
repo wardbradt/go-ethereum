@@ -139,7 +139,7 @@ Block `MUST` contain between 0 and `MaxMergedBundles` bundles.
 
 A block with bundles `MUST` place the bundles at the beginning of the block and `MUST NOT` insert any transactions between the bundles or bundle transactions.
 
-When constructing the block any bundle that has a reverting transaction which hash is not included in the `RevertingTxHashes` list of the bundle object should be rejected.
+When constructing the block the node should reject any bundle that has a reverting transaction unless its hash is included in the `RevertingTxHashes` list of the bundle object.
 
 The node `SHOULD` be able to compare the `block profit` for each number of bundles between 0 and `MaxMergedBundles` and choose a block with the highest `profit`, e.g. if `MaxMergedBundles` is 3 then the node `SHOULD` build 4 different blocks - with the maximum of respectively 0, 1, 2, and 3 bundles and choose the one with the highest `profit`.
 
