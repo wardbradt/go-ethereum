@@ -69,16 +69,16 @@ For a transaction it is equivalent to the transaction gas price and for other `u
 A value of a transaction with a recipient set to be the same as the `coinbase` address.
 
 #### `Proxy coinbase payment`
-A payment via a proxy smart contract deployed on mainnet at the `ProxyContractAddress` to the `coinbase` address with the payment logs generated with a topic of '0x82bfd7d226ef75398f858bca413814d37886af582526e7fae712e36fe8a5d297'.
+A payment via a proxy smart contract deployed on mainnet at the `ProxyContractAddress` to the `coinbase` address with the payment logs generated with a 0x82bfd7d226ef75398f858bca413814d37886af582526e7fae712e36fe8a5d297 topic.
 
 #### `Contract coinbase payment`
-A payment from a smart contract to the `coinbase` address (including 'proxy coinbase payment').
+A payment from a smart contract to the `coinbase` address (including `proxy coinbase payment`).
 
 #### `Coinbase payment`
 A sum of all `direct coinbase payments` and `contract coinbase payments` within the `unit of work`.
 
 #### `Eligible coinbase payment`
-A sum of all 'proxy coinbase payments' within the `unit of work`.
+A sum of all `proxy coinbase payments` within the `unit of work`.
 
 #### `Gas fee payment`
 An `average gas price` * `total gas used` within the `unit of work`.
