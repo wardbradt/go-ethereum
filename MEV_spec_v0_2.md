@@ -10,7 +10,7 @@ Defines the construction and usage of MEV bundles by miners. Provides a specific
 
 ## Abstract
 
-`MevBundles` are stored by the node and the bundles that are providing extra profit for miners are added to the block in front of other transactions.
+`MEV bundles` are stored by the node and the bundles that are providing extra profit for miners are added to the block in front of other transactions.
 
 ## Motivation
 
@@ -20,10 +20,33 @@ We believe that without the adoption of neutral, public, open-source infrastruct
 
 The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `SHOULD NOT`, `RECOMMENDED`,  `MAY`, and `OPTIONAL` in this document are to be interpreted as described in [RFC-2119](https://www.ietf.org/rfc/rfc2119.txt).
 
+### Miner Configuration
+
+Miner should accept the following configuration options:
+* StrictProfitSwitch (int) - time in miliseconds to wait for both of the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
+* ProxyContractAddress (address) - an address at which the proxy payment contract is deployed with the default value of 0xf1A54b075Fb71768ac31B33fd7c61ad8f9f7Dd18
+* MaxMergedBundles (int) - max number of `MEV bundles` to be included within a single block
+
 ### Definitions
 
-#### `Bundle`
-A set of transactions that `MUST` be executed together, `MUST` be executed before any non-bundle transactions only after other bundles that have a higher `simulated MEV equivalent gas price`, and `MUST` execute without failure (return status 1 on transaction receipts).
+#### `MEV bundle` or `bundle`
+An object with five properties:
+
+|Property| Type|Description|
+|-|-|-|
+|`transactions`|`Array<RLP(SignedTransaction)>`|A list of transactions in the bundle. Each transaction is signed and RLP-encoded.|
+|`blockNumber`|`uint64`|The exact block number at which the bundle can be executed|
+|`minTimestamp`|`uint64`|Minimum block timestamp (inclusive) at which the bundle can be executed|
+|`maxTimestamp`|`uint64`|Maximum block timestamp (inclusive) at which the bundle can be executed|
+|`revertingTxHashes`|`Array<Keccak>`|List of hashes of transactions that are allowed to return status 0 on transaction receipts|
+
+A list of transactions that `MUST` be executed together, `MUST` be executed before any non-bundle transactions and only after other bundles that have a higher `bundle adjusted gas price`, and `MUST` execute without failure (return status 1 on transaction receipts) unless its hash is included in the `revertingTxHashes` list.
+
+#### `MEV block`
+
+A block containing more than zero 'MEV bundles'.
+
+Whenever we say that a block contains a `bundle` we mean that the block includes all transactions of that bundle in the same order as in the `bundle`.
 
 #### `Unit of work`
 A `transaction`, a `bundle` or a `block`.
@@ -35,19 +58,31 @@ A discernible `unit of work` that is a part of a bigger `unit of work`. A `trans
 A sum of gas units used by each transaction from the `unit of work`.
 
 #### `Average gas price`
-For a transaction it is equivalent to the transaction gas price and for other `units of work` it is a sum of (`average gas price` * `total gas used`) of all `subunits` divided by the `total gas used` of the unit.
-
-#### `Tail gas price`
-The greater of the 80 GWei and the gas price of the last transaction of the parent block.
+For a transaction it is equivalent to the transaction gas price and for other `units of work` it is a sum of (`average gas price` * `total gas used`) of all `subunits` divided by the `total gas used` by the unit.
 
 #### `Direct coinbase payment`
 A value of a transaction with a recipient set to be the same as the `coinbase` address.
 
+#### `Proxy coinbase payment`
+A payment via a proxy smart contract deployed on mainnet at the `ProxyContractAddress` to the `coinbase` address with the payment logs generated with a topic of '0x82bfd7d226ef75398f858bca413814d37886af582526e7fae712e36fe8a5d297'.
+
 #### `Contract coinbase payment`
-A payment from a smart contract to the `coinbase` address.
+A payment from a smart contract to the `coinbase` address (including 'proxy coinbase payment').
 
 #### `Coinbase payment`
 A sum of all `direct coinbase payments` and `contract coinbase payments` within the `unit of work`.
+
+#### `Eligible coinbase payment`
+A sum of all 'proxy coinbase payments' within the `unit of work`.
+
+#### `Gas fee payment`
+An `average gas price` * `total gas used` within the `unit of work`.
+
+#### `Eligible gas fee payment`
+A `gas fee payment` excluding `gas fee payments` from transactions that can be spotted by the miner in the publicly visible transaction pool.
+
+#### `Bundle scoring profit`
+A sum of all 'eligible coinbase payments' and 'eligible gas payments' of a `bundle`.
 
 #### `Profit`
 A difference between the balance of the `coinbase` account at the end and at the beginning of the execution of a `unit of work`. We can measure a `transaction profit`, a `bundle profit`, and a `block profit`.
@@ -55,25 +90,15 @@ A difference between the balance of the `coinbase` account at the end and at the
 Balance of the `coinbase` account changes in the following way
 |Unit of work|Balance Change|
 |-|-|
-|Transaction| `average gas price` * `total gas used` + `direct coinbase payment`  + `contract coinbase payment`  |
+|Transaction| `average gas price` * `total gas used` + `direct coinbase payment` + `contract coinbase payment` |
 |Bundle | `average gas price` * `total gas used` + `direct coinbase payment`  + `contract coinbase payment` |
 |Block | `block reward` + `average gas price` * `total gas used` + `direct coinbase payment`  + `contract coinbase payment` |
 
 #### `Adjusted gas price`
 `Unit of work` `profit` divided by the `total gas used` by the `unit of work`.
 
-#### `MEV equivalent gas price`
-`Coinbase payment` divided by the `total gas used` by the `unit of work`.
-
-#### `MevBundle` 
-An object with four properties:
-
-|Property| Type|Description|
-|-|-|-|
-|`transactions`|`Array<RLP(SignedTransaction)>`|A list of transactions in the bundle. Each transaction is signed and RLP-encoded.|
-|`blockNumber`|`uint64`|The exact block number at which the bundle can be executed|
-|`minTimestamp`|`uint64`|Minimum block timestamp (inclusive) at which the bundle can be executed|
-|`maxTimestamp`|`uint64`|Maximum block timestamp (inclusive) at which the bundle can be executed|
+#### `Bundle adjusted gas price`
+`Bundle scoring profit` divided by the `total gas used` by the `bundle`.
 
 ### Bundle construction
 
@@ -81,13 +106,19 @@ A bundle `SHOULD` contain transactions with nonces that are following the curren
 
 A bundle `MUST` contain at least one transaction. There is no upper limit for the number of transactions in the bundle, however bundles that exceed the block gas limit will always be rejected. 
 
-A bundle `MAY` include a `direct coinbase payment` or a `contract coinbase payment`. Bundles that do not contain such payments may be discarded when their `MEV equivalent gas price` is compared with other bundles or the `tail gas price`.
+A bundle `MAY` include a `proxy coinbase payment`. Bundles that do not contain such payments may be discarded when their `bundle adjusted gas price` is compared with other bundles.
 
 The `maxTimestamp` value `MUST` be greater or equal the `minTimestamp` value.
 
 ### Accepting bundles from the network
 
-Node `MUST` provide a way of exposing a JSON RPC endpoint accepting `eth_sendBundle` calls (specified [here](https://hackmd.io/kbW7uxzqS_6Bi2xi9VI2ww)). Such endpoint `SHOULD` only be accepting calls from `MEV-relay` but there is no requirement to restrict it through the node source code as it can be done on the infrastructure level.
+#### JSON RPC
+
+Node `MUST` provide a way of exposing a JSON RPC endpoint accepting `eth_sendBundle` calls (specified [here](MEV_spec_RPC_v0_2.md)). Such endpoint `SHOULD` only be accepting calls from `MEV-relay` but there is no requirement to restrict it through the node source code as it can be done on the infrastructure level.
+
+#### WebSockets
+
+Node `MUST` be able to connect to a relay WebSocket endpoint provided as a configuration option named `RelayWSURL` using an authentication key and maintain an open connection. Authentication key `MUST` be provided with the key security in mind.
 
 ### Bundle eligibility
 
@@ -97,11 +128,15 @@ Any bundle that is correctly constructed `MAY` have a `minTimestamp` and/or a `m
 
 ### Block construction
 
-`MevBundles` `MUST` be sorted by their `MEV equivalent gas price` first and then one by one merged into one bundle as long as there is any gas left in the block and the `MEV equivalent gas price` is greater than the `tail gas price`. During the bundle merging process any `MEV bundle` that does not satisfy the gas price requirements is skipped and the following bundles are then tested. After all bundle are tested the remaining block gas is used for non-MEV transactions.
+`MEV bundles` `MUST` be sorted by their `bundle adjusted gas price` first and then one by one added to the block as long as there is any gas left in the block and number of bundles added is less or equal the `MaxMergedBundles` parameter. The remaining block gas `SHOULD` be used for non-MEV transactions.
 
-The node `SHOULD` be able to compare a `block profit` in cases when bundles are included (MEV block) and when no bundles are included (regular block) and choose a block with the highest `profit`.
+Block 'MUST' contain between 0 and `MaxMergedBundles` bundles.
 
 A block with bundles `MUST` place the bundles at the beginning of the block and `MUST NOT` insert any transactions between the bundles or bundle transactions.
+
+The node `SHOULD` be able to compare the `block profit` for each number of bundles between 0 and `MaxMergedBundles` and choose a block with the highest `profit`, e.g. if `MaxMergedBundles` is 3 then the node `SHOULD` build 4 different blocks - with the maximum of repectively 0, 1, 2, and 3 bundles and compare which has the highest `profit`.
+
+If the 0 bundles block is not yet available and the `StrictProfitSwitch` parameter is set to a value other than 0 then the node `MUST` wait `StrictProfitSwitch` miliseconds before accepting any MEV block for mining.
 
 ### Bundle eviction
 
@@ -109,17 +144,13 @@ Node `SHOULD` be able to limit the number of bundles kept in memory and apply an
 
 ## Rationale
 
-### Min 80 GWei tail gas price.
-
-We pick an arbitrary number for this intial proposal. Min 80 GWei `tail gas price` addresses some problems including empty parent blocks.
-
 ### Naive bundle merging
 
-The bundle merging process is not necessarily picking the most profitable combination of bundles but the best guess achievable without degrading latency. The first bundle included is always the bundle with the highest `MEV equivalent gas price`
+The bundle merging process is not necessarily picking the most profitable combination of bundles but only the best guess achievable without degrading latency. The first bundle included is always the bundle with the highest `bundle adjusted gas price`
 
-### Using MEV equivalent gas price instead of adjusted gas price
+### Using bundle adjusted gas price instead of adjusted gas price
 
-The `MEV equivalent gas price` is used to prevent bundle creators from artificially increasing the `adjusted gas price` by adding unrelated high gas price transactions.
+The `bundle adjusted gas price` is used to prevent bundle creators from artificially increasing the `adjusted gas price` by adding unrelated high gas price transactions from the publicly visible transaction pool.
 
 ### Each bundle needs a blockNumber
 
@@ -129,15 +160,11 @@ This allows specifying bundles to be included in the future blocks (e.g. just af
 
 ### Full block submission
 
-A proposal to allow MEV-Geth accepting fully constructed blocks as well as bundles is considered for inclusion in v0.2.
+A proposal to allow MEV-Geth accepting fully constructed blocks as well as bundles is considered for inclusion in next versions.
 
 ### Contract coinbase payments via proxy payment contract
 
 A purposefully crafted proxy payment contract is proposed as a requirement and the only payment method considered for `MEV equivalent gas price` calculation.
-
-### Web sockets endpoints
-
-A web socket endpoint for bundles submission is considered as a replacement to the current HTTP enpoints.
 
 ## Backwards Compatibility
 
@@ -145,4 +172,4 @@ This change is not affecting consensus and is fully backwards compatible.
 
 ## Security Considerations
 
-`MevBundles` that are awaiting future blocks must be stored by the miner's node and it is important to ensure that there is a mechanism to ensure that the storage is limits are not exceeded (whether they are store in memory or persisted).
+`MEV bundles` that are awaiting future blocks must be stored by the node and it is important to ensure that there is a mechanism to ensure that the storage is limits are not exceeded (whether they are store in memory or persisted).
