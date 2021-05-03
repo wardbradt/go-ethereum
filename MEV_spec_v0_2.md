@@ -87,7 +87,7 @@ An `average gas price` * `total gas used` within the `unit of work`.
 A `gas fee payment` excluding `gas fee payments` from transactions that can be spotted by the miner in the publicly visible transaction pool.
 
 #### `Bundle scoring profit`
-A sum of all 'eligible coinbase payments' and 'eligible gas payments' of a `bundle`.
+A sum of all `eligible coinbase payments` and `eligible gas payments` of a `bundle`.
 
 #### `Profit`
 A difference between the balance of the `coinbase` account at the end and at the beginning of the execution of a `unit of work`. We can measure a `transaction profit`, a `bundle profit`, and a `block profit`.
