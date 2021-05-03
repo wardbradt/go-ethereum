@@ -29,8 +29,15 @@ Miner should accept the following configuration options:
 
 ### Definitions
 
+#### `Relay`
+
+An external system delivering validated `MEV bundle` to the node.
+
 #### `MEV bundle` or `bundle`
-An object with five properties:
+
+A list of transactions that `MUST` be executed together, `MUST` be executed before any non-bundle transactions and only after other bundles that have a higher `bundle adjusted gas price`, and `MUST` execute without failure (return status 1 on transaction receipts) unless its hash is included in the `revertingTxHashes` list.
+
+When representing a bundle in communication between a `relay` and the node we use an object with the following properties:
 
 |Property| Type|Description|
 |-|-|-|
@@ -39,8 +46,6 @@ An object with five properties:
 |`minTimestamp`|`uint64`|Minimum block timestamp (inclusive) at which the bundle can be executed|
 |`maxTimestamp`|`uint64`|Maximum block timestamp (inclusive) at which the bundle can be executed|
 |`revertingTxHashes`|`Array<Keccak>`|List of hashes of transactions that are allowed to return status 0 on transaction receipts|
-
-A list of transactions that `MUST` be executed together, `MUST` be executed before any non-bundle transactions and only after other bundles that have a higher `bundle adjusted gas price`, and `MUST` execute without failure (return status 1 on transaction receipts) unless its hash is included in the `revertingTxHashes` list.
 
 #### `MEV block`
 
@@ -134,9 +139,11 @@ Block 'MUST' contain between 0 and `MaxMergedBundles` bundles.
 
 A block with bundles `MUST` place the bundles at the beginning of the block and `MUST NOT` insert any transactions between the bundles or bundle transactions.
 
-The node `SHOULD` be able to compare the `block profit` for each number of bundles between 0 and `MaxMergedBundles` and choose a block with the highest `profit`, e.g. if `MaxMergedBundles` is 3 then the node `SHOULD` build 4 different blocks - with the maximum of repectively 0, 1, 2, and 3 bundles and compare which has the highest `profit`.
+When constructing the block any bundle that has a reverting transaction which hash is not included in the `RevertingTxHashes` list of the bundle object should be rejected.
 
-If the 0 bundles block is not yet available and the `StrictProfitSwitch` parameter is set to a value other than 0 then the node `MUST` wait `StrictProfitSwitch` miliseconds before accepting any MEV block for mining.
+The node `SHOULD` be able to compare the `block profit` for each number of bundles between 0 and `MaxMergedBundles` and choose a block with the highest `profit`, e.g. if `MaxMergedBundles` is 3 then the node `SHOULD` build 4 different blocks - with the maximum of respectively 0, 1, 2, and 3 bundles and choose the one with the highest `profit`.
+
+When constructing blocks, if the 0 bundles block has not yet been constructed and the `StrictProfitSwitch` parameter is set to a value other than 0, then the node `MUST` wait `StrictProfitSwitch` miliseconds before accepting any MEV block for mining.
 
 ### Bundle eviction
 
