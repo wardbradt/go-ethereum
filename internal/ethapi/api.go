@@ -2224,6 +2224,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, encodedTxs []hexutil.Bytes, 
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
 	for i, tx := range txs {
+		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
 		state.Prepare(tx.Hash(), common.Hash{}, i)
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
@@ -2237,7 +2238,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, encodedTxs []hexutil.Bytes, 
 			"gasUsed": receipt.GasUsed,
 		}
 		totalGasUsed += receipt.GasUsed
-		gasFees.Add(gasFees, new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice()))
+		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
+		gasFees.Add(gasFees, gasFeesTx)
 		bundleHash.Write(tx.Hash().Bytes())
 		if result.Err != nil {
 			jsonResult["error"] = result.Err.Error()
@@ -2250,6 +2252,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, encodedTxs []hexutil.Bytes, 
 			hex.Encode(dst, result.Return())
 			jsonResult["value"] = "0x" + string(dst)
 		}
+		coinbaseDiffTx := new(big.Int).Sub(state.GetBalance(coinbase), coinbaseBalanceBeforeTx)
+		jsonResult["coinbaseDiff"] = coinbaseDiffTx.String()
+		jsonResult["gasFees"] = gasFeesTx.String()
+		jsonResult["ethSentToCoinbase"] = new(big.Int).Sub(coinbaseDiffTx, gasFeesTx).String()
+		jsonResult["gasPrice"] = new(big.Int).Div(coinbaseDiffTx, big.NewInt(int64(receipt.GasUsed))).String()
+		jsonResult["gasUsed"] = receipt.GasUsed
 		results = append(results, jsonResult)
 	}
 
