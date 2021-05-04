@@ -42,7 +42,7 @@ import (
 
 const (
 	// resultQueueSize is the size of channel listening to sealing result.
-	resultQueueSize = 10
+	resultQueueSize = 20
 
 	// txChanSize is the size of channel listening to NewTxsEvent.
 	// The number is referenced from the size of tx pool.
