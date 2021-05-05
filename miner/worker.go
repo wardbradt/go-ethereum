@@ -1155,14 +1155,23 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		header.Coinbase = w.coinbase
 		if useMB {
 			if n := uint64(time.Now().Unix()); n < maybeMB.Timestamp {
-				log.Error(
+				log.Warn(
 					"time for megabundle does not make sense",
 					n, maybeMB.Timestamp,
 				)
 				return
 			}
+
+			if maybeMB.ParentHash != header.ParentHash {
+				log.Warn(
+					"header does not match ",
+					maybeMB.ParentHash.Hex(),
+					header.ParentHash.Hex(),
+				)
+				return
+			}
+
 			header.Time = maybeMB.Timestamp
-			header.ParentHash = maybeMB.ParentHash
 		}
 	}
 
@@ -1513,13 +1522,12 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 			// If tx is not in pending pool, count the gas fees
 			gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 			gasFees.Add(gasFees, gasUsed.Mul(gasUsed, tx.GasPrice()))
+
+			coinbaseBalanceAfter := state.GetBalance(w.coinbase)
+			coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
+			coinbaseDelta.Sub(coinbaseDelta, gasFees)
+			ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
 		}
-
-		coinbaseBalanceAfter := state.GetBalance(w.coinbase)
-		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
-		coinbaseDelta.Sub(coinbaseDelta, gasFees)
-		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
-
 	}
 
 	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
