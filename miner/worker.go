@@ -1118,7 +1118,8 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	}
 
 	num := parent.Number()
-	// we are the megabundle worker
+	// so keep in mind that worker is overloaded in resp and one of them is
+	// the megabundle worker
 	var (
 		maybeMB types.MegaBundle
 		useMB   bool
@@ -1153,7 +1154,13 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		}
 		header.Coinbase = w.coinbase
 		if useMB {
-			header.Coinbase = maybeMB.Coinbase
+			if n := uint64(time.Now().Unix()); n < maybeMB.Timestamp {
+				log.Error(
+					"time for megabundle does not make sense",
+					n, maybeMB.Timestamp,
+				)
+				return
+			}
 			header.Time = maybeMB.Timestamp
 			header.ParentHash = maybeMB.ParentHash
 		}

@@ -43,9 +43,6 @@ var (
 	clientDial = flag.String(
 		"client_dial", "ws://127.0.0.1:8546", "could be websocket or IPC",
 	)
-	cb = flag.String(
-		"coinbase", miner, "what coinbase to use",
-	)
 	at        = flag.Uint64("kickoff", 32, "what number to kick off at")
 	faucet, _ = crypto.HexToECDSA(
 		"133be114715e5fe528a1b8adf36792160601a2d63ab59d1fd454275b31328791",
@@ -175,7 +172,6 @@ func program() error {
 						TransactionList: usedTxs,
 						Timestamp:       uint64(time.Now().Add(time.Second * 45).Unix()),
 						CoinbaseDiff:    1e17,
-						Coinbase:        common.HexToAddress(*cb),
 						ParentHash:      incoming.Hash(),
 					},
 				); err != nil {
