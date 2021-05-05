@@ -1153,13 +1153,14 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			return
 		}
 		header.Coinbase = w.coinbase
+
 		if useMB {
-			if n := uint64(time.Now().Unix()); n < maybeMB.Timestamp {
+			if prv := maybeMB.Timestamp; parent.Time() >= uint64(prv) {
+				maybeMB.Timestamp = uint64(parent.Time() + 1)
 				log.Warn(
-					"time for megabundle does not make sense",
-					n, maybeMB.Timestamp,
+					"time for megabundle did not make sense, so overridden",
+					prv, maybeMB.Timestamp,
 				)
-				return
 			}
 
 			if maybeMB.ParentHash != header.ParentHash {
