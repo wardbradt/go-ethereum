@@ -146,3 +146,9 @@ geth-windows-amd64:
 	$(GORUN) build/ci.go xgo -- --go=$(GO) --targets=windows/amd64 -v ./cmd/geth
 	@echo "Windows amd64 cross compilation done:"
 	@ls -ld $(GOBIN)/geth-windows-* | grep amd64
+
+mev-tools:
+	$(GORUN) build/ci.go install ./cmd/mev-checks
+	@echo "made mev-tools"
+
+both: mev-tools geth;

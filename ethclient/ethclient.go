@@ -527,6 +527,12 @@ func (ec *Client) SendTransaction(ctx context.Context, tx *types.Transaction) er
 	return ec.c.CallContext(ctx, nil, "eth_sendRawTransaction", hexutil.Encode(data))
 }
 
+func (ec *Client) SendMegaBundle(
+	ctx context.Context, mb *types.MegaBundle,
+) error {
+	return ec.c.CallContext(ctx, nil, "eth_sendMegaBundle", mb)
+}
+
 func toCallArg(msg ethereum.CallMsg) interface{} {
 	arg := map[string]interface{}{
 		"from": msg.From,

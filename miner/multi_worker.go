@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -91,6 +92,15 @@ func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine cons
 				maxMergedBundles: i,
 			}))
 	}
+	// mega bundle worker
+	workers = append(workers,
+		newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
+			isFlashbots:      true,
+			queue:            queue,
+			maxMergedBundles: -1,
+			mb:               &mb{},
+		}),
+	)
 
 	log.Info("creating multi worker", "config.MaxMergedBundles", config.MaxMergedBundles, "worker", len(workers))
 	return &multiWorker{
@@ -99,8 +109,14 @@ func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine cons
 	}
 }
 
+type mb struct {
+	latest *types.MegaBundle
+	sync.RWMutex
+}
+
 type flashbotsData struct {
 	isFlashbots      bool
 	queue            chan *task
 	maxMergedBundles int
+	mb               *mb
 }

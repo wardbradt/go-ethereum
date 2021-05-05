@@ -197,6 +197,10 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 }
 
+var (
+	IncomingMegaBundle = make(chan *types.MegaBundle)
+)
+
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool, flashbots *flashbotsData) *worker {
 	exitCh := make(chan struct{})
 	taskCh := make(chan *task)
@@ -217,6 +221,16 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 				case <-exitCh:
 					return
 				}
+			}
+		}()
+	}
+
+	if flashbots.mb != nil {
+		go func() {
+			for b := range IncomingMegaBundle {
+				flashbots.mb.Lock()
+				flashbots.mb.latest = b
+				flashbots.mb.Unlock()
 			}
 		}()
 	}
@@ -1095,13 +1109,35 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
+
 	tstart := time.Now()
 	parent := w.chain.CurrentBlock()
 
 	if parent.Time() >= uint64(timestamp) {
 		timestamp = int64(parent.Time() + 1)
 	}
+
 	num := parent.Number()
+	// we are the megabundle worker
+	var (
+		maybeMB types.MegaBundle
+		useMB   bool
+	)
+
+	if w.flashbots.mb != nil {
+		w.flashbots.mb.RLock()
+		if w.flashbots.mb.latest != nil {
+			maybeMB = *w.flashbots.mb.latest
+			useMB = true
+			defer func() {
+				w.flashbots.mb.Lock()
+				w.flashbots.mb.latest = nil
+				w.flashbots.mb.Unlock()
+			}()
+		}
+		w.flashbots.mb.RUnlock()
+	}
+
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     num.Add(num, common.Big1),
@@ -1116,11 +1152,18 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			return
 		}
 		header.Coinbase = w.coinbase
+		if useMB {
+			header.Coinbase = maybeMB.Coinbase
+			header.Time = maybeMB.Timestamp
+			header.ParentHash = maybeMB.ParentHash
+		}
 	}
+
 	if err := w.engine.Prepare(w.chain, header); err != nil {
 		log.Error("Failed to prepare header for mining", "err", err)
 		return
 	}
+
 	// If we are care about TheDAO hard-fork check whether to override the extra-data or not
 	if daoBlock := w.chainConfig.DAOForkBlock; daoBlock != nil {
 		// Check whether the block is among the fork extra-override range
@@ -1166,6 +1209,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			}
 		}
 	}
+
 	// Prefer to locally generated uncle
 	commitUncles(w.localUncles)
 	commitUncles(w.remoteUncles)
@@ -1185,7 +1229,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	// Short circuit if there is no available pending transactions or bundles.
 	// But if we disable empty precommit already, ignore it. Since
 	// empty block is necessary to keep the liveness of the network.
-	noBundles := true
+	noBundles := true && w.flashbots.mb == nil
 	if w.flashbots.isFlashbots && len(w.eth.TxPool().AllMevBundles()) > 0 {
 		noBundles = false
 	}
@@ -1201,7 +1245,8 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			localTxs[account] = txs
 		}
 	}
-	if w.flashbots.isFlashbots {
+
+	if w.flashbots.isFlashbots && w.flashbots.mb == nil {
 		bundles, err := w.eth.TxPool().MevBundles(header.Number, header.Time)
 		if err != nil {
 			log.Error("Failed to fetch pending transactions", "err", err)
@@ -1222,6 +1267,43 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		}
 		w.current.profit.Add(w.current.profit, bundle.totalEth)
 	}
+
+	if useMB {
+		gasPool := new(core.GasPool).AddGas(header.GasLimit)
+		state, err := w.chain.StateAt(header.ParentHash)
+		if err != nil {
+			log.Error("Failed to generate flashbots megabundle", "err", err)
+			return
+		}
+
+		megaBundle, err := w.computeBundleGas(
+			types.MevBundle{
+				Txs: maybeMB.TransactionList,
+			}, parent, header, state, gasPool, pending, 0,
+		)
+
+		if err != nil {
+			log.Error("Failed to generate flashbots megabundle", "err", err)
+			return
+		}
+
+		if megaBundle.ethSentToCoinbase.Cmp(
+			big.NewInt(int64(maybeMB.CoinbaseDiff)),
+		) == -1 {
+			log.Warn(
+				"eth send to code base did not exceed diff needed",
+				megaBundle.totalEth, maybeMB.CoinbaseDiff,
+			)
+			return
+		}
+
+		if w.commitBundle(megaBundle.originalBundle.Txs, header.Coinbase, interrupt) {
+			return
+		}
+
+		w.current.profit.Add(w.current.profit, megaBundle.totalEth)
+	}
+
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(w.current.signer, localTxs)
 		if w.commitTransactions(txs, w.coinbase, interrupt) {
@@ -1294,7 +1376,7 @@ func (w *worker) generateFlashbotsBundle(bundles []types.MevBundle, coinbase com
 
 func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, header *types.Header, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, int, error) {
 	finalBundle := types.Transactions{}
-
+	zero := new(big.Int)
 	state, err := w.chain.StateAt(parent.Root())
 	if err != nil {
 		return nil, simulatedBundle{}, 0, err
@@ -1315,7 +1397,7 @@ func (w *worker) mergeBundles(bundles []simulatedBundle, parent *types.Block, he
 		prevGasPool = new(core.GasPool).AddGas(gasPool.Gas())
 
 		simmed, err := w.computeBundleGas(bundle.originalBundle, parent, header, state, gasPool, pendingTxs, len(finalBundle))
-		if err != nil || simmed.totalEth.Cmp(new(big.Int)) < 0 {
+		if err != nil || simmed.totalEth.Cmp(zero) < 0 {
 			state = prevState
 			gasPool = prevGasPool
 			continue
@@ -1424,12 +1506,13 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 			// If tx is not in pending pool, count the gas fees
 			gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 			gasFees.Add(gasFees, gasUsed.Mul(gasUsed, tx.GasPrice()))
-
-			coinbaseBalanceAfter := state.GetBalance(w.coinbase)
-			coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
-			coinbaseDelta.Sub(coinbaseDelta, gasFees)
-			ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
 		}
+
+		coinbaseBalanceAfter := state.GetBalance(w.coinbase)
+		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
+		coinbaseDelta.Sub(coinbaseDelta, gasFees)
+		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
+
 	}
 
 	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
