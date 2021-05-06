@@ -2238,11 +2238,15 @@ func (s *BundleAPI) CallBundle(ctx context.Context, encodedTxs []hexutil.Bytes, 
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
+		to := "0x"
+		if tx.To() != nil {
+			to = tx.To().String()
+		}
 		jsonResult := map[string]interface{}{
 			"txHash":      txHash,
 			"gasUsed":     receipt.GasUsed,
 			"fromAddress": from.String(),
-			"toAddress":   tx.To().String(),
+			"toAddress":   to,
 		}
 		totalGasUsed += receipt.GasUsed
 		gasFeesTx := new(big.Int).Mul(big.NewInt(int64(receipt.GasUsed)), tx.GasPrice())
