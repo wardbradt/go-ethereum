@@ -2153,7 +2153,38 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 	return s.b.SendBundle(ctx, txs, args.BlockNumber, minTimestamp, maxTimestamp, args.RevertingTxHashes)
 }
 
-func (s *PrivateTxBundleAPI) SendMegaBundle(ctx context.Context, mb *types.MegaBundle) error {
-	miner.IncomingMegaBundle <- mb
+// MegaBundleArgs represents the arguments for a call.
+type MegaBundleArgs struct {
+	Txs          []hexutil.Bytes `json:"txs"`
+	Timestamp    uint64          `json:"timestamp"`
+	CoinbaseDiff *big.Int        `json:"coinbaseDiff"`
+	ParentHash   common.Hash     `json:"parentHash"`
+}
+
+var emptyHash = common.Hash{}
+
+func (s *PrivateTxBundleAPI) SendMegaBundle(ctx context.Context, mb MegaBundleArgs) error {
+	var txs types.Transactions
+	if len(mb.Txs) == 0 {
+		return errors.New("megabundle missing txs")
+	}
+	if mb.ParentHash == emptyHash {
+		return errors.New("megabundle missing ParentHash")
+	}
+
+	for _, encodedTx := range mb.Txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			return err
+		}
+		txs = append(txs, tx)
+	}
+
+	miner.IncomingMegaBundle <- &types.MegaBundle{
+		TransactionList: txs,
+		Timestamp:       mb.Timestamp,
+		CoinbaseDiff:    mb.CoinbaseDiff,
+		ParentHash:      mb.ParentHash,
+	}
 	return nil
 }

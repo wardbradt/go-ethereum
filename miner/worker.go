@@ -1155,14 +1155,6 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		header.Coinbase = w.coinbase
 
 		if useMB {
-			if prv := maybeMB.Timestamp; parent.Time() >= uint64(prv) {
-				maybeMB.Timestamp = uint64(parent.Time() + 1)
-				log.Warn(
-					"time for megabundle did not make sense, so overridden",
-					prv, maybeMB.Timestamp,
-				)
-			}
-
 			if maybeMB.ParentHash != header.ParentHash {
 				log.Warn(
 					"header does not match ",
@@ -1170,6 +1162,14 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 					header.ParentHash.Hex(),
 				)
 				return
+			}
+
+			if prv := maybeMB.Timestamp; parent.Time() >= uint64(prv) {
+				maybeMB.Timestamp = uint64(parent.Time() + 1)
+				log.Warn(
+					"time for megabundle did not make sense, so overridden",
+					prv, maybeMB.Timestamp,
+				)
 			}
 
 			header.Time = maybeMB.Timestamp
@@ -1304,11 +1304,9 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 			return
 		}
 
-		if megaBundle.ethSentToCoinbase.Cmp(
-			big.NewInt(int64(maybeMB.CoinbaseDiff)),
-		) == -1 {
+		if megaBundle.ethSentToCoinbase.Cmp(maybeMB.CoinbaseDiff) == -1 {
 			log.Warn(
-				"eth send to code base did not exceed diff needed",
+				"eth send to coinbase did not exceed diff needed",
 				megaBundle.totalEth, maybeMB.CoinbaseDiff,
 			)
 			return

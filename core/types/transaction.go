@@ -544,6 +544,6 @@ type MevBundle struct {
 type MegaBundle struct {
 	TransactionList Transactions
 	Timestamp       uint64
-	CoinbaseDiff    uint64
+	CoinbaseDiff    *big.Int
 	ParentHash      common.Hash
 }
