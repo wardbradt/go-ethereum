@@ -1156,6 +1156,9 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 					maybeMB.ParentHash.Hex(),
 					header.ParentHash.Hex(),
 				)
+				w.flashbots.mb.Lock()
+				w.flashbots.mb.latest = nil
+				w.flashbots.mb.Unlock()
 				return
 			}
 
