@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -43,7 +44,7 @@ var (
 	clientDial = flag.String(
 		"client_dial", "ws://127.0.0.1:8546", "could be websocket or IPC",
 	)
-	at        = flag.Uint64("kickoff", 32, "what number to kick off at")
+	at        = flag.Uint64("kickoff", 2, "what number to kick off at")
 	faucet, _ = crypto.HexToECDSA(
 		"133be114715e5fe528a1b8adf36792160601a2d63ab59d1fd454275b31328791",
 	)
@@ -76,8 +77,9 @@ func mbTxList(
 		if err != nil {
 			return nil, err
 		}
-		fmt.Println("public key is ", k.Hex(), "balance", balance)
-
+		if balance.Cmp(common.Big0) == 0 {
+			return nil, errors.New("need non-zero balance")
+		}
 		t := types.NewTransaction(
 			non,
 			toAddr,
@@ -136,6 +138,7 @@ func program() error {
 	if err != nil {
 		return err
 	}
+	deployAt := *at
 
 	for {
 		select {
@@ -143,7 +146,7 @@ func program() error {
 			return e
 		case incoming := <-ch:
 			blockNumber := incoming.Number.Uint64()
-			if blockNumber == 15 {
+			if blockNumber == deployAt {
 				t, err := deployBribeContract(client, chainID)
 				if err != nil {
 					return err
@@ -153,11 +156,15 @@ func program() error {
 					crypto.PubkeyToAddress(faucet.PublicKey),
 					t.Nonce(),
 				)
-				fmt.Println("deployed bribe contract ", newContractAddr.Hex(), blockNumber)
+				fmt.Println("\tdeployed bribe contract ", newContractAddr.Hex(), blockNumber)
 				continue
 			}
 
-			if blockNumber == *at {
+			fmt.Println(
+				"new head", blockNumber, incoming.Hash(),
+			)
+
+			if blockNumber == deployAt+1 {
 				usedTxs, err := mbTxList(client, newContractAddr, chainID)
 				if err != nil {
 					return err
@@ -171,8 +178,8 @@ func program() error {
 					context.Background(), &types.MegaBundle{
 						TransactionList: usedTxs,
 						Timestamp:       uint64(time.Now().Add(time.Second * 45).Unix()),
-						CoinbaseDiff:    1e17,
-						ParentHash:      incoming.Hash(),
+						CoinbaseDiff:    big.NewInt(1e17),
+						ParentHash:      incoming.ParentHash,
 					},
 				); err != nil {
 					return err
