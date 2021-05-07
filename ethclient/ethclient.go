@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -530,7 +531,20 @@ func (ec *Client) SendTransaction(ctx context.Context, tx *types.Transaction) er
 func (ec *Client) SendMegaBundle(
 	ctx context.Context, mb *types.MegaBundle,
 ) error {
-	return ec.c.CallContext(ctx, nil, "eth_sendMegaBundle", mb)
+	var txs []hexutil.Bytes
+	for _, t := range mb.TransactionList {
+		payload, err := t.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		txs = append(txs, payload)
+	}
+	return ec.c.CallContext(ctx, nil, "eth_sendMegaBundle", ethapi.MegaBundleArgs{
+		Txs:          txs,
+		Timestamp:    mb.Timestamp,
+		CoinbaseDiff: mb.CoinbaseDiff,
+		ParentHash:   mb.ParentHash,
+	})
 }
 
 func toCallArg(msg ethereum.CallMsg) interface{} {
