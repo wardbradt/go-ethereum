@@ -1130,11 +1130,6 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		if w.flashbots.mb.latest != nil {
 			maybeMB = *w.flashbots.mb.latest
 			useMB = true
-			defer func() {
-				w.flashbots.mb.Lock()
-				w.flashbots.mb.latest = nil
-				w.flashbots.mb.Unlock()
-			}()
 		}
 		w.flashbots.mb.RUnlock()
 	}
@@ -1287,9 +1282,9 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 
 	if useMB {
 		gasPool := new(core.GasPool).AddGas(header.GasLimit)
-		state, err := w.chain.StateAt(header.ParentHash)
+		state, err := w.chain.StateAt(parent.Root())
 		if err != nil {
-			log.Error("Failed to generate flashbots megabundle", "err", err)
+			log.Error("Failed to fetch stat4e for flashbots megabundle", "err", err)
 			return
 		}
 
