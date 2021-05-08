@@ -660,13 +660,11 @@ func (w *worker) taskLoop() {
 		case <-timer.C:
 			// timer went off, use first bundle, defaultTaskPick
 			if d := defaultTaskPick; d != nil {
-				fmt.Println("default task ", d.block.Number(), d.block.Header().Hash())
 				handle(d)
 			}
 
 		case task := <-w.taskCh:
 			if w.config.StrictProfitWait == 0 {
-				fmt.Println("strict progit wait was 0 ", task.block.Number())
 				handle(task)
 				continue
 			}
@@ -1111,7 +1109,6 @@ func (w *worker) commitTransactions(txs *types.TransactionsByPriceAndNonce, coin
 func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-
 	tstart := time.Now()
 	parent := w.chain.CurrentBlock()
 
@@ -1152,14 +1149,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		header.Coinbase = w.coinbase
 
 		if useMB {
-			fmt.Println("got a hbit on megabundle now is!", num)
 			if maybeMB.ParentHash != header.ParentHash {
-				fmt.Println(
-					"rejected A\n",
-					"\nwrong\t", maybeMB.ParentHash.Hex(),
-					"\ncorrect\t", header.ParentHash.Hex(),
-					"\n",
-				)
 				log.Warn(
 					"header does not match ",
 					maybeMB.ParentHash.Hex(),
@@ -1170,13 +1160,12 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 
 			if prv := maybeMB.Timestamp; parent.Time() >= uint64(prv) {
 				maybeMB.Timestamp = uint64(parent.Time() + 1)
-				fmt.Println("rejected B")
 				log.Warn(
 					"time for megabundle did not make sense, so overridden",
 					prv, maybeMB.Timestamp,
 				)
 			}
-			fmt.Println("INSANE GONNA USE MEGA BUNDLE")
+
 			header.Time = maybeMB.Timestamp
 		}
 	}
