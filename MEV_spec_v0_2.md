@@ -38,7 +38,7 @@ A list of transactions that `MUST` be executed together and in the same order as
 
 Transactions in the bundle `MUST` execute without failure (return status 1 on transaction receipts) unless their hashes are included in the `revertingTxHashes` list.
 
-When representing a bundle in communication between a `relay` and the node we use an object with the following properties:
+When representing a bundle in communication between the `relay` and the node we use an object with the following properties:
 
 |Property| Type|Description|
 |-|-|-|
@@ -117,11 +117,11 @@ The `maxTimestamp` value `MUST` be greater or equal the `minTimestamp` value.
 
 #### JSON RPC
 
-Node `MUST` provide a way of exposing a JSON RPC endpoint accepting `eth_sendBundle` calls (specified [here](MEV_spec_RPC_v0_2.md)). Such endpoint `SHOULD` only be accepting calls from `MEV-relay` but there is no requirement to restrict it through the node source code as it can be done on the infrastructure level.
+Node `MUST` provide a way of exposing a JSON RPC endpoint accepting `eth_sendBundle` calls (specified [here](MEV_spec_RPC_v0_2.md)). Such endpoint `SHOULD` only be accepting calls from the `relay` but there is no requirement to restrict it through the node source code as it can be done on the infrastructure level.
 
 #### WebSockets
 
-Node `MUST` be able to connect to a relay WebSocket endpoint provided as a configuration option named `RelayWSURL` using an authentication key and maintain an open connection. Authentication key `MUST` be provided with the key security in mind.
+Node `MUST` be able to connect to the relay WebSocket endpoint provided as a configuration option named `RelayWSURL` using an authentication key and maintain an open connection. Authentication key `MUST` be provided with the key security in mind.
 
 ### Bundle eligibility
 
