@@ -104,12 +104,6 @@ curl -X POST --data '{
 }
 ```
 
-## Geth code changes
-
-[Add eth_callBundle rpc method · flashbots/mev-geth@9199d2e](https://github.com/flashbots/mev-geth/commit/9199d2e13d484df7a634fad12343ed2b46d5d4c3)
-
-[Allow errors in the middle of eth_callBundle · flashbots/mev-geth@a99dfc1](https://github.com/flashbots/mev-geth/commit/a99dfc198817dd171128cc22439c81896e876619)
-
 ---
 
 Below type description can also be found in [EIP-1474](https://eips.ethereum.org/EIPS/eip-1474)
