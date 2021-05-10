@@ -25,7 +25,7 @@ The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `S
 Miner should accept the following configuration options:
 * StrictProfitSwitch (int) - time in miliseconds to wait for both the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
 * MaxMergedBundles (int) - max number of `MEV bundles` to be included within a single block
-* RelayWSSigningKey (int) - a signing key for communication with the relay's WebSockets endpoint
+* RelayWSSigningKey (int) - a signing key for communication with the relay's WebSockets endpoint. The key should be a valid private key from a secp256k1 based ECDSA.
 
 ### Definitions
 
