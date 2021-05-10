@@ -62,13 +62,13 @@ A `transaction`, a `bundle` or a `block`.
 A discernible `unit of work` that is a part of a bigger `unit of work`. A `transaction` is a `subunit` of a `bundle` or a `block`. A `bundle` is a `subunit` of a `block`.
 
 #### `Total gas used`
-A sum of gas units used by each transaction from the `unit of work`.
+The sum of gas units used by each transaction from the `unit of work`.
 
 #### `Average gas price`
 For a transaction it is equivalent to the transaction gas price and for other `units of work` it is a sum of (`average gas price` * `total gas used`) of all `subunits` divided by the `total gas used` by the unit.
 
 #### `Direct coinbase payment`
-A value of a transaction with a recipient set to be the same as the `coinbase` address.
+The value of a transaction with a recipient set to be the same as the `coinbase` address.
 
 #### `Contract coinbase payment`
 A payment from a smart contract to the `coinbase` address.
@@ -134,7 +134,7 @@ Any bundle that is correctly constructed `MAY` have a `minTimestamp` and/or a `m
 
 ### Block construction
 
-`MEV bundles` `MUST` be sorted by their `bundle adjusted gas price` first and then one by one added to the block as long as there is any gas left in the block and number of bundles added is less or equal the `MaxMergedBundles` parameter. The remaining block gas `SHOULD` be used for non-MEV transactions.
+`MEV bundles` `MUST` be sorted by their `bundle adjusted gas price` first and then one by one added to the block as long as there is any gas left in the block and the number of bundles added is less or equal the `MaxMergedBundles` parameter. The remaining block gas `SHOULD` be used for non-MEV transactions.
 
 Block `MUST` contain between 0 and `MaxMergedBundles` bundles.
 
@@ -172,8 +172,10 @@ A proposal to allow MEV-Geth accepting fully constructed blocks as well as bundl
 
 ## Backwards Compatibility
 
-This change is not affecting consensus and is fully backwards compatible.
+This change is not affecting consensus and is fully compatible with Ethereum specification.
+
+Bundle formats are not backwards compatible and the v0.2 bundles would be rejected by v0.1 MEV clients.
 
 ## Security Considerations
 
-`MEV bundles` that are awaiting future blocks must be stored by the node and it is important to ensure that there is a mechanism to ensure that the storage is limits are not exceeded (whether they are store in memory or persisted).
+`MEV bundles` that are awaiting future blocks must be stored by the node to ensure that the storage limits are not exceeded (whether they are store in memory or persisted).
