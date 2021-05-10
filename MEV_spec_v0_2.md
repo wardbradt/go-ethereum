@@ -47,7 +47,7 @@ When representing a bundle in communication between the `relay` and the node we 
 |`blockNumber`|`uint64`|The exact block number at which the bundle can be executed|
 |`minTimestamp`|`uint64`|Minimum block timestamp (inclusive) at which the bundle can be executed|
 |`maxTimestamp`|`uint64`|Maximum block timestamp (inclusive) at which the bundle can be executed|
-|`revertingTxHashes`|`Array<Keccak>`|List of hashes of transactions that are allowed to return status 0 on transaction receipts|
+|`revertingTxHashes`|`Array<bytes32>`|List of hashes of transactions that are allowed to return status 0 on transaction receipts|
 
 #### `MEV block`
 
