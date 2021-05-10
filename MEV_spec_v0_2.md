@@ -24,7 +24,6 @@ The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `S
 
 Miner should accept the following configuration options:
 * StrictProfitSwitch (int) - time in miliseconds to wait for both the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
-* ProxyContractAddress (address) - an address at which the proxy payment contract is deployed with the default value of 0xf1A54b075Fb71768ac31B33fd7c61ad8f9f7Dd18
 * MaxMergedBundles (int) - max number of `MEV bundles` to be included within a single block
 
 ### Definitions
@@ -68,17 +67,14 @@ For a transaction it is equivalent to the transaction gas price and for other `u
 #### `Direct coinbase payment`
 A value of a transaction with a recipient set to be the same as the `coinbase` address.
 
-#### `Proxy coinbase payment`
-A payment via a proxy smart contract deployed on mainnet at the `ProxyContractAddress` to the `coinbase` address with the payment logs generated with a 0x82bfd7d226ef75398f858bca413814d37886af582526e7fae712e36fe8a5d297 topic.
-
 #### `Contract coinbase payment`
-A payment from a smart contract to the `coinbase` address (including `proxy coinbase payment`).
+A payment from a smart contract to the `coinbase` address.
 
 #### `Coinbase payment`
 A sum of all `direct coinbase payments` and `contract coinbase payments` within the `unit of work`.
 
 #### `Eligible coinbase payment`
-A sum of all `proxy coinbase payments` within the `unit of work`.
+A sum of all `direct coinbase payments` and `contract coinbase payments` within the `unit of work`.
 
 #### `Gas fee payment`
 An `average gas price` * `total gas used` within the `unit of work`.
@@ -111,7 +107,7 @@ A bundle `SHOULD` contain transactions with nonces that are following the curren
 
 A bundle `MUST` contain at least one transaction. There is no upper limit for the number of transactions in the bundle, however bundles that exceed the block gas limit will always be rejected. 
 
-A bundle `MAY` include a `proxy coinbase payment`. Bundles that do not contain such payments may be discarded when their `bundle adjusted gas price` is compared with other bundles.
+A bundle `MAY` include `eligible coinbase payments`. Bundles that do not contain such payments may be discarded when their `bundle adjusted gas price` is compared with other bundles.
 
 The `maxTimestamp` value `MUST` be greater or equal the `minTimestamp` value.
 
@@ -168,10 +164,6 @@ This allows specifying bundles to be included in the future blocks (e.g. just af
 ### Full block submission
 
 A proposal to allow MEV-Geth accepting fully constructed blocks as well as bundles is considered for inclusion in next versions.
-
-### Contract coinbase payments via proxy payment contract
-
-A purposefully crafted proxy payment contract is proposed as a requirement and the only payment method considered for `MEV equivalent gas price` calculation.
 
 ## Backwards Compatibility
 
