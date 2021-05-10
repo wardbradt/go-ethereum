@@ -64,7 +64,7 @@ After retrieving the block specified in the `blockNrOrHash` it takes the same `b
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | encodedTxs | `Array<Data>` | Array of signed transactions (`eth_sendRawTransaction` style, signed and RLP-encoded) |
-| blockNrOrHash	| `Quantity|string|Block Identifier` | Block number, or one of "latest", "earliest" or "pending", or a block identifier as described in {Block Identifier} |
+| blockNrOrHash	| `Quantity\|string\|Block Identifier` | Block number, or one of "latest", "earliest" or "pending", or a block identifier as described in {Block Identifier} |
 | blockTimestamp	|`Quantity`	|Block timestamp to be used in replacement of the timestamp taken from the parent block. |
 
 ### Returns
