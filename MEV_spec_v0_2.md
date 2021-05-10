@@ -30,7 +30,7 @@ Miner should accept the following configuration options:
 
 #### `Relay`
 
-An external system delivering validated `MEV bundle` to the node.
+An external system delivering `MEV bundles` to the node. Relay provides protection against DoS attacks.
 
 #### `MEV bundle` or `bundle`
 
