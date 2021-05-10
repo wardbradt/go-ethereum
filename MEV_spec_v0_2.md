@@ -23,7 +23,7 @@ The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `S
 ### Miner Configuration
 
 Miner should accept the following configuration options:
-* StrictProfitSwitch (int) - time in miliseconds to wait for both of the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
+* StrictProfitSwitch (int) - time in miliseconds to wait for both the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
 * ProxyContractAddress (address) - an address at which the proxy payment contract is deployed with the default value of 0xf1A54b075Fb71768ac31B33fd7c61ad8f9f7Dd18
 * MaxMergedBundles (int) - max number of `MEV bundles` to be included within a single block
 
