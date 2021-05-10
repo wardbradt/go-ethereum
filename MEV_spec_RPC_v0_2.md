@@ -2,7 +2,7 @@
 tags: spec
 ---
 
-# MEV-Geth RPC v0.1
+# MEV-Geth RPC v0.2
 
 # eth_sendBundle
 
