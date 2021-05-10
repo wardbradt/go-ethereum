@@ -34,7 +34,7 @@ An external system delivering `MEV bundles` to the node. Relay provides protecti
 
 #### `MEV bundle` or `bundle`
 
-A list of transactions that `MUST` be executed together, `MUST` be executed before any non-bundle transactions and only after other bundles that have a higher `bundle adjusted gas price`, and `MUST` execute without failure (return status 1 on transaction receipts) unless its hash is included in the `revertingTxHashes` list.
+A list of transactions that `MUST` be executed together and in the same order as provided in the bundle, `MUST` be executed before any non-bundle transactions and only after other bundles that have a higher `bundle adjusted gas price`, and `MUST` execute without failure (return status 1 on transaction receipts) unless their hashes are included in the `revertingTxHashes` list.
 
 When representing a bundle in communication between a `relay` and the node we use an object with the following properties:
 
