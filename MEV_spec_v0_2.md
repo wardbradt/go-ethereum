@@ -25,6 +25,7 @@ The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `S
 Miner should accept the following configuration options:
 * StrictProfitSwitch (int) - time in miliseconds to wait for both the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
 * MaxMergedBundles (int) - max number of `MEV bundles` to be included within a single block
+* RelayWSSigningKey (int) - a signing key for communication with the relay's WebSockets endpoint
 
 ### Definitions
 
@@ -122,6 +123,8 @@ Node `MUST` provide a way of exposing a JSON RPC endpoint accepting `eth_sendBun
 #### WebSockets
 
 Node `MUST` be able to connect to the relay WebSocket endpoint provided as a configuration option named `RelayWSURL` using an authentication key and maintain an open connection. Authentication key `MUST` be provided with the key security in mind.
+
+During the WebSocket connection initiation and on each reconnection, the node `MUST` sign a timestamp (unix epoch in seconds, UTC) using the `RelayWSSigningKey` and send it in the request header body.
 
 ### Bundle eligibility
 
