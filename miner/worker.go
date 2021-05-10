@@ -199,6 +199,7 @@ type worker struct {
 
 var (
 	IncomingMegaBundle = make(chan *types.MegaBundle)
+	MBWorker           = make(chan types.MegaBundle)
 )
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool, flashbots *flashbotsData) *worker {
@@ -221,16 +222,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 				case <-exitCh:
 					return
 				}
-			}
-		}()
-	}
-
-	if flashbots.mb != nil {
-		go func() {
-			for b := range IncomingMegaBundle {
-				flashbots.mb.Lock()
-				flashbots.mb.latest = b
-				flashbots.mb.Unlock()
 			}
 		}()
 	}
@@ -278,6 +269,12 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		// only mine if not flashbots
 		go worker.resultLoop()
 		go worker.taskLoop()
+		go func() {
+			for b := range IncomingMegaBundle {
+				MBWorker <- *b
+			}
+		}()
+
 	}
 
 	// Submit first work to initialize pending state.
@@ -1058,6 +1055,8 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	}
 
 	num := parent.Number()
+	currentBlock := new(big.Int).Set(num)
+
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     num.Add(num, common.Big1),
@@ -1075,23 +1074,26 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 
 	if w.flashbots.mb != nil {
 
-		w.flashbots.mb.RLock()
-		if w.flashbots.mb.latest != nil {
-			maybeMB = *w.flashbots.mb.latest
-			useMB = true
-
-			s, _ := json.MarshalIndent(header, " ", " ")
-			s2, _ := json.MarshalIndent(maybeMB, " ", " ")
-
+		select {
+		case b := <-MBWorker:
 			fmt.Println(
-				"this is megabundle worker doing work for potential block",
-				num, string(s),
-				"using megabundle",
-				string(s2),
+				"channel read it at ?", currentBlock, "potential block", header.Number,
 			)
-
+			maybeMB = b
+			useMB = true
+		default:
 		}
-		w.flashbots.mb.RUnlock()
+
+		s, _ := json.MarshalIndent(header, " ", " ")
+		s2, _ := json.MarshalIndent(maybeMB, " ", " ")
+
+		fmt.Println(
+			"this is megabundle worker doing work for potential block",
+			header.Number, string(s),
+			"using megabundle",
+			string(s2),
+		)
+
 	} else {
 		fmt.Println("this is plain worker doing work for potential block", num)
 		s, _ := json.MarshalIndent(header, " ", " ")

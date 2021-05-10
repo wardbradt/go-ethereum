@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -145,7 +146,9 @@ func program() error {
 		case e := <-sub.Err():
 			return e
 		case incoming := <-ch:
+			s4, _ := json.MarshalIndent(incoming, " ", " ")
 			blockNumber := incoming.Number.Uint64()
+			fmt.Println("new confirmed block", blockNumber, string(s4))
 			if blockNumber == deployAt {
 				t, err := deployBribeContract(client, chainID)
 				if err != nil {
@@ -160,27 +163,23 @@ func program() error {
 				continue
 			}
 
-			fmt.Println(
-				"new head", blockNumber, incoming.Hash(),
-			)
-
 			if blockNumber == deployAt+1 {
 				usedTxs, err := mbTxList(client, newContractAddr, chainID)
 				if err != nil {
 					return err
 				}
 
-				fmt.Println("using as parent hash",
-					incoming.Hash().Hex(), incoming.Number,
-				)
+				mb := &types.MegaBundle{
+					TransactionList: usedTxs,
+					Timestamp:       uint64(time.Now().Add(time.Second * 45).Unix()),
+					CoinbaseDiff:    big.NewInt(1e17),
+					ParentHash:      incoming.Hash(),
+				}
+				s4, _ := json.MarshalIndent(mb, " ", " ")
+				fmt.Println("kciking out the megabundle at block", blockNumber, string(s4))
 
 				if err := client.SendMegaBundle(
-					context.Background(), &types.MegaBundle{
-						TransactionList: usedTxs,
-						Timestamp:       uint64(time.Now().Add(time.Second * 45).Unix()),
-						CoinbaseDiff:    big.NewInt(1e17),
-						ParentHash:      incoming.ParentHash,
-					},
+					context.Background(), mb,
 				); err != nil {
 					return err
 				}
