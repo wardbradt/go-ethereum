@@ -19,7 +19,7 @@ maxTimestamp	|`Quantity`	|Maximum (inclusive) block timestamp at which the bundl
 
 ### Returns
 
-{`boolean`} - `true` if bundle has been successfully added, otherwise `false`
+{`boolean`} - `true` if bundle has been accepted by the node, otherwise `false`
 
 ### Example
 

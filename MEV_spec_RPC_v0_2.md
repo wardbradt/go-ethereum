@@ -20,7 +20,7 @@ revertingTxHashes	|Array<`Data`>	|Array of tx hashes within the bundle that are 
 
 ### Returns
 
-{`boolean`} - `true` if bundle has been successfully added, otherwise `false`
+{`boolean`} - `true` if bundle has been accepted by the node, otherwise `false`
 
 ### Example
 
