@@ -8,7 +8,7 @@ tags: spec
 
 ### Description
 
-Sends a bundle of transactions to the miner. The bundle has to be executed at the beginning of the block (before any other transactions), with bundle transactions executed exactly in the same order as provided in the bundle. During the Flashbots Alpha this is only called by the MEV-relay.
+Sends a bundle of transactions to the miner. The bundle has to be executed at the beginning of the block (before any other transactions), with bundle transactions executed exactly in the same order as provided in the bundle. During the Flashbots Alpha this is only called by the Flashbots relay.
 
 | Name | Type | Description | Comment
 --------|----------|-----------|-----------
