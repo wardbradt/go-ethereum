@@ -18,7 +18,7 @@ package miner
 
 import (
 	"bytes"
-	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -590,10 +590,7 @@ func (w *worker) taskLoop() {
 
 		prevParentHash common.Hash
 		prevProfit     *big.Int
-		timer          = time.NewTimer(0)
 	)
-
-	<-timer.C // usual skip first tick
 
 	// interrupt aborts the in-flight sealing task.
 	interrupt := func() {
@@ -603,102 +600,43 @@ func (w *worker) taskLoop() {
 		}
 	}
 
-	taskWork := map[string]struct{}{}
-	var defaultTaskPick *task
-
-	asSha256 := func(o interface{}) string {
-		h := sha256.New()
-		h.Write([]byte(fmt.Sprintf("%v", o)))
-		return fmt.Sprintf("%x", h.Sum(nil))
-	}
-
-	handle := func(task *task) {
-		if w.newTaskHook != nil {
-			w.newTaskHook(task)
-		}
-		// Reject duplicate sealing work due to resubmitting.
-		sealHash := w.engine.SealHash(task.block.Header())
-		if sealHash == prev {
-			return
-		}
-
-		taskParentHash := task.block.Header().ParentHash
-		// reject new tasks which don't profit
-		if taskParentHash == prevParentHash &&
-			prevProfit != nil && task.profit.Cmp(prevProfit) < 0 {
-			return
-		}
-		prevParentHash = taskParentHash
-		prevProfit = task.profit
-
-		// Interrupt previous sealing operation
-		interrupt()
-		stopCh, prev = make(chan struct{}), sealHash
-		log.Info("Proposed miner block", "blockNumber", task.block.Number(), "profit", ethIntToFloat(prevProfit), "isFlashbots", task.isFlashbots, "sealhash", sealHash, "parentHash", prevParentHash, "worker", task.worker)
-		if w.skipSealHook != nil && w.skipSealHook(task) {
-			return
-		}
-		w.pendingMu.Lock()
-		w.pendingTasks[sealHash] = task
-		w.pendingMu.Unlock()
-
-		if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
-			log.Warn("Block sealing failed", "err", err)
-		}
-
-	}
-
-	type unique struct {
-		receipts []*types.Receipt
-		state    *state.StateDB
-		block    *types.Block
-	}
-
 	for {
 		select {
 
-		case <-timer.C:
-			// timer went off, use first bundle, defaultTaskPick
-			if d := defaultTaskPick; d != nil {
-				fmt.Println("default task ", d.block.Number(), d.block.Header().Hash())
-				handle(d)
-			}
-
 		case task := <-w.taskCh:
-			if w.config.StrictProfitWait == 0 {
-				fmt.Println("strict progit wait was 0 ", task.block.Number())
-				handle(task)
+			if w.newTaskHook != nil {
+				w.newTaskHook(task)
+			}
+			// Reject duplicate sealing work due to resubmitting.
+			sealHash := w.engine.SealHash(task.block.Header())
+			if sealHash == prev {
 				continue
 			}
 
-			func() {
-				defer func() {
-					if len(taskWork) > 4096 {
-						taskWork = map[string]struct{}{}
-					}
-				}()
-				u := asSha256(unique{task.receipts, task.state, task.block})
-				_, plainExists := taskWork[fmt.Sprintf("%s-%v", u, false)]
-				_, flashBotsExists := taskWork[fmt.Sprintf("%s-%v", u, true)]
-				taskKey := fmt.Sprintf("%s-%v", u, task.isFlashbots)
+			taskParentHash := task.block.Header().ParentHash
+			// reject new tasks which don't profit
+			if taskParentHash == prevParentHash &&
+				prevProfit != nil && task.profit.Cmp(prevProfit) < 0 {
+				continue
+			}
+			prevParentHash = taskParentHash
+			prevProfit = task.profit
 
-				switch {
-				// one of the workers already made this task
-				case plainExists || flashBotsExists:
-					timer.Stop()
-					if defaultTaskPick.profit.Cmp(task.profit) >= 0 {
-						handle(defaultTaskPick)
-					} else {
-						handle(task)
-					}
-				// neither worker produced the task yet
-				case !plainExists && !flashBotsExists:
-					taskWork[taskKey] = struct{}{}
-					defaultTaskPick = task
-					timer.Reset(w.config.StrictProfitWait)
-					return
-				}
-			}()
+			// Interrupt previous sealing operation
+			interrupt()
+			stopCh, prev = make(chan struct{}), sealHash
+			log.Info("Proposed miner block", "blockNumber", task.block.Number(), "profit", ethIntToFloat(prevProfit), "isFlashbots", task.isFlashbots, "sealhash", sealHash, "parentHash", prevParentHash, "worker", task.worker)
+			if w.skipSealHook != nil && w.skipSealHook(task) {
+				continue
+			}
+			w.pendingMu.Lock()
+			w.pendingTasks[sealHash] = task
+			w.pendingMu.Unlock()
+
+			if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
+				log.Warn("Block sealing failed", "err", err)
+			}
+
 		case <-w.exitCh:
 			interrupt()
 			return
@@ -1120,6 +1058,14 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	}
 
 	num := parent.Number()
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     num.Add(num, common.Big1),
+		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil),
+		Extra:      w.extra,
+		Time:       uint64(timestamp),
+	}
+
 	// so keep in mind that worker is overloaded in resp and one of them is
 	// the megabundle worker
 	var (
@@ -1128,21 +1074,30 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	)
 
 	if w.flashbots.mb != nil {
+
 		w.flashbots.mb.RLock()
 		if w.flashbots.mb.latest != nil {
 			maybeMB = *w.flashbots.mb.latest
 			useMB = true
+
+			s, _ := json.MarshalIndent(header, " ", " ")
+			s2, _ := json.MarshalIndent(maybeMB, " ", " ")
+
+			fmt.Println(
+				"this is megabundle worker doing work for potential block",
+				num, string(s),
+				"using megabundle",
+				string(s2),
+			)
+
 		}
 		w.flashbots.mb.RUnlock()
+	} else {
+		fmt.Println("this is plain worker doing work for potential block", num)
+		s, _ := json.MarshalIndent(header, " ", " ")
+		fmt.Println(string(s))
 	}
 
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     num.Add(num, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent, w.config.GasFloor, w.config.GasCeil),
-		Extra:      w.extra,
-		Time:       uint64(timestamp),
-	}
 	// Only set the coinbase if our consensus engine is running (avoid spurious block rewards)
 	if w.isRunning() {
 		if w.coinbase == (common.Address{}) {
