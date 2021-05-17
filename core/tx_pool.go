@@ -250,7 +250,7 @@ type relayBundleMessage struct {
 }
 
 type bundleData struct {
-	EncodedTxs        []hexutil.Bytes `json:"encodedTxs"`
+	EncodedTxs        []hexutil.Bytes `json:"txs"`
 	BlockNumber       rpc.BlockNumber `json:"blockNumber"`
 	MinTimestamp      uint64          `json:"minTimestamp"`
 	MaxTimestamp      uint64          `json:"maxTimestamp"`
@@ -352,8 +352,9 @@ func (pool *TxPool) readWSMessages() {
 				// Finally, we add the bundle sent to the tx pool
 				pool.AddMevBundle(txs, big.NewInt(bundleMessage.Data.BlockNumber.Int64()), bundleMessage.Data.MinTimestamp, bundleMessage.Data.MaxTimestamp, bundleMessage.Data.RevertingTxHashes)
 			}
+		} else {
+			time.Sleep(500 * time.Millisecond)
 		}
-
 	}
 }
 
