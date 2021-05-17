@@ -48,10 +48,6 @@ curl -X POST --data '{
 }
 ```
 
-### Geth code changes
-
-[Add eth_sendBundle RPC · flashbots/mev-geth@8104d5d](https://github.com/flashbots/mev-geth/commit/8104d5d7b0a54bd98b3a08479a1fde685eb53c29)
-
 # eth_callBundle
 
 ### Description

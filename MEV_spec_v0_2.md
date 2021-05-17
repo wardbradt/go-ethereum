@@ -46,7 +46,7 @@ When representing a bundle in communication between the `relay` and the node we 
 
 |Property| Type|Description|
 |-|-|-|
-|`transactions`|`Array<RLP(SignedTransaction)>`|A list of transactions in the bundle. Each transaction is signed and RLP-encoded.|
+|`txs`|`Array<RLP(SignedTransaction)>`|A list of transactions in the bundle. Each transaction is signed and RLP-encoded.|
 |`blockNumber`|`uint64`|The exact block number at which the bundle can be executed|
 |`minTimestamp`|`uint64`|Minimum block timestamp (inclusive) at which the bundle can be executed|
 |`maxTimestamp`|`uint64`|Maximum block timestamp (inclusive) at which the bundle can be executed|
@@ -127,7 +127,7 @@ Node `MUST` provide a way of exposing a JSON RPC endpoint accepting `eth_sendBun
 
 Node `MUST` be able to connect to the relay WebSocket endpoint provided as a configuration option named `RelayWSURL` using an authentication key and maintain an open connection. Authentication key `MUST` be provided with the key security in mind.
 
-During the WebSocket connection initiation and on each reconnection, the node `MUST` sign a timestamp (unix epoch in seconds, UTC) using the `RelayWSSigningKey` and send it in the request header body (X-Auth-Message).
+During the WebSocket connection initiation and on each reconnection, the node `MUST` sign a timestamp (unix epoch in seconds, UTC) using the `RelayWSSigningKey` and send it in the request header body (X-Auth-Message). The X-Auth-Message should be a JSON encoded object with three properties called timestamp, signature and coinbase.
 
 ### Bundle eligibility
 
