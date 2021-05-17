@@ -23,9 +23,12 @@ The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHALL`, `SHALL NOT`, `SHOULD`, `S
 ### Miner Configuration
 
 Miner should accept the following configuration options:
-* StrictProfitSwitch (int) - time in miliseconds to wait for both the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
-* MaxMergedBundles (int) - max number of `MEV bundles` to be included within a single block
-* RelayWSSigningKey (int) - a signing key for communication with the relay's WebSockets endpoint. The key should be a valid private key from a secp256k1 based ECDSA.
+* miner.strictprofitswitch (int) - time in miliseconds to wait for both the non-MEV (vanilla) and the `MEV block` construction before selecting the best available block for mining. If value is zero then no waiting is necessary.
+* miner.maxmergedbundles (int) - max number of `MEV bundles` to be included within a single block
+* relayWSURL (string) - address of the relay WS endpoint
+* relayWSSigningKey (bytes32) - a signing key for communication with the relay's WebSockets endpoint. The key should be a valid private key from a secp256k1 based ECDSA.
+* relayWSSigningKeystoreFile (string) - path to the keystore file with the WS signing key (used when signing key not provided)
+* relayWSKeystorePW (string) - password to unlock the relay WS keystore file
 
 ### Definitions
 
@@ -124,7 +127,7 @@ Node `MUST` provide a way of exposing a JSON RPC endpoint accepting `eth_sendBun
 
 Node `MUST` be able to connect to the relay WebSocket endpoint provided as a configuration option named `RelayWSURL` using an authentication key and maintain an open connection. Authentication key `MUST` be provided with the key security in mind.
 
-During the WebSocket connection initiation and on each reconnection, the node `MUST` sign a timestamp (unix epoch in seconds, UTC) using the `RelayWSSigningKey` and send it in the request header body.
+During the WebSocket connection initiation and on each reconnection, the node `MUST` sign a timestamp (unix epoch in seconds, UTC) using the `RelayWSSigningKey` and send it in the request header body (X-Auth-Message).
 
 ### Bundle eligibility
 
