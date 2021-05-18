@@ -317,38 +317,43 @@ func (pool *TxPool) readWSMessages() {
 				} else {
 					log.Error("WS error while reading the relay message: ", "err", err.Error(), "messageType", messageType)
 				}
-			}
-			var abstractMessage relayAbstractMessage
-			if err := json.Unmarshal([]byte(message), &abstractMessage); err != nil {
-				log.Error("Error while decoding relay message: ", "err", err.Error())
-			}
-			// If relay message is of type "success", log the success message from relay
-			if abstractMessage.Type == "success" {
-				var successMessage relaySuccessMessage
-				if err := json.Unmarshal([]byte(message), &successMessage); err != nil {
-					log.Error("Error while decoding relay success message: ", "err", err.Error())
-				}
-				log.Info(successMessage.Data)
-			}
-			// If relay message is of type "bundle", decode the payload and add bundle
-			// The sender is responsible for signing the transaction and using the correct nonce and ensuring validity
-			if abstractMessage.Type == "bundle" {
-				var bundleMessage relayBundleMessage
-				if err := json.Unmarshal([]byte(message), &bundleMessage); err != nil {
-					log.Error("Error while decoding relay bundle message: ", "err", err.Error())
-				}
-
-				var txs types.Transactions
-
-				for _, encodedTx := range bundleMessage.Data.EncodedTxs {
-					tx := new(types.Transaction)
-					if err := tx.UnmarshalBinary(encodedTx); err != nil {
-						log.Error("Error while decoding bundle transactions: ", "err", err.Error())
+			} else {
+				var abstractMessage relayAbstractMessage
+				if err := json.Unmarshal([]byte(message), &abstractMessage); err != nil {
+					log.Error("Error while decoding relay message: ", "err", err.Error())
+				} else {
+					// If relay message is of type "success", log the success message from relay
+					if abstractMessage.Type == "success" {
+						var successMessage relaySuccessMessage
+						if err := json.Unmarshal([]byte(message), &successMessage); err != nil {
+							log.Error("Error while decoding relay success message: ", "err", err.Error())
+						} else {
+							log.Info(successMessage.Data)
+						}
 					}
-					txs = append(txs, tx)
+					// If relay message is of type "bundle", decode the payload and add bundle
+					// The sender is responsible for signing the transaction and using the correct nonce and ensuring validity
+					if abstractMessage.Type == "bundle" {
+						var bundleMessage relayBundleMessage
+						if err := json.Unmarshal([]byte(message), &bundleMessage); err != nil {
+							log.Error("Error while decoding relay bundle message: ", "err", err.Error())
+						} else {
+							var txs types.Transactions
+							for _, encodedTx := range bundleMessage.Data.EncodedTxs {
+								tx := new(types.Transaction)
+								if err := tx.UnmarshalBinary(encodedTx); err != nil {
+									log.Error("Error while decoding bundle transactions: ", "err", err.Error())
+								} else {
+									txs = append(txs, tx)
+								}
+							}
+							if len(txs) > 0 {
+								// Finally, we add the bundle sent to the tx pool
+								pool.AddMevBundle(txs, big.NewInt(bundleMessage.Data.BlockNumber.Int64()), bundleMessage.Data.MinTimestamp, bundleMessage.Data.MaxTimestamp, bundleMessage.Data.RevertingTxHashes)
+							}
+						}
+					}
 				}
-				// Finally, we add the bundle sent to the tx pool
-				pool.AddMevBundle(txs, big.NewInt(bundleMessage.Data.BlockNumber.Int64()), bundleMessage.Data.MinTimestamp, bundleMessage.Data.MaxTimestamp, bundleMessage.Data.RevertingTxHashes)
 			}
 		} else {
 			time.Sleep(500 * time.Millisecond)
