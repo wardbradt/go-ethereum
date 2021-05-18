@@ -607,7 +607,7 @@ func (w *worker) taskLoop() {
 			// Interrupt previous sealing operation
 			interrupt()
 			stopCh, prev = make(chan struct{}), sealHash
-			log.Info("Proposed miner block", "blockNumber", task.block.Number(), "profit", ethIntToFloat(prevProfit), "isFlashbots", task.isFlashbots, "sealhash", sealHash, "parentHash", prevParentHash)
+			log.Info("Proposed miner block", "blockNumber", task.block.Number(), "profit", ethIntToFloat(prevProfit), "isFlashbots", task.isFlashbots, "sealhash", sealHash, "parentHash", prevParentHash, "worker", task.worker)
 			if w.skipSealHook != nil && w.skipSealHook(task) {
 				continue
 			}

@@ -500,7 +500,7 @@ var (
 	RelayWSURL = cli.StringFlag{
 		Name:  "relaywsurl",
 		Usage: "URL of the websocket relay sending bundles",
-		Value: "https://miner-relay.flashbots.net",
+		Value: "wss://miner-relay.flashbots.net",
 	}
 	RelayWSSigningKey = cli.StringFlag{
 		Name:  "relaywssigningkey",

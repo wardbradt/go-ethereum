@@ -22,7 +22,6 @@ import (
 	"math"
 	"math/big"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"sync"
@@ -260,12 +259,11 @@ type bundleData struct {
 // Connect to the Relay WS to receive bundles
 func (pool *TxPool) connectWS() {
 	log.Info("Attempting websocket connection")
-	u := url.URL{Scheme: "ws", Host: pool.config.RelayWSURL, Path: "/"}
 	authMessage := map[string]string{"timestamp": pool.getUTCTimestamp(), "signature": pool.getWSAuthSignature(), "coinbase": pool.config.Etherbase}
 	encodedAuthMessage, _ := json.Marshal(authMessage)
-	conn, _, err := websocket.DefaultDialer.Dial(u.String(), http.Header{"X-Auth-Message": {string(encodedAuthMessage)}})
+	conn, _, err := websocket.DefaultDialer.Dial(pool.config.RelayWSURL, http.Header{"X-Auth-Message": {string(encodedAuthMessage)}})
 	if err != nil {
-		log.Error("Relay websocket connection error: ", err, nil)
+		log.Error("Relay websocket connection error", "err", err)
 		pool.wsConnection.wsConnected = false
 	} else {
 		pool.wsConnection.wsConnected = true
@@ -317,18 +315,18 @@ func (pool *TxPool) readWSMessages() {
 					log.Error("WS connection with relay closed")
 					pool.wsConnection.wsConnected = false
 				} else {
-					log.Error("WS error while reading the relay message: ", err.Error(), messageType)
+					log.Error("WS error while reading the relay message: ", "err", err.Error(), "messageType", messageType)
 				}
 			}
 			var abstractMessage relayAbstractMessage
 			if err := json.Unmarshal([]byte(message), &abstractMessage); err != nil {
-				log.Error("Error while decoding relay message: ", err.Error(), nil)
+				log.Error("Error while decoding relay message: ", "err", err.Error())
 			}
 			// If relay message is of type "success", log the success message from relay
 			if abstractMessage.Type == "success" {
 				var successMessage relaySuccessMessage
 				if err := json.Unmarshal([]byte(message), &successMessage); err != nil {
-					log.Error("Error while decoding relay success message: ", err.Error(), nil)
+					log.Error("Error while decoding relay success message: ", "err", err.Error())
 				}
 				log.Info(successMessage.Data)
 			}
@@ -337,7 +335,7 @@ func (pool *TxPool) readWSMessages() {
 			if abstractMessage.Type == "bundle" {
 				var bundleMessage relayBundleMessage
 				if err := json.Unmarshal([]byte(message), &bundleMessage); err != nil {
-					log.Error("Error while decoding relay bundle message: ", err.Error(), nil)
+					log.Error("Error while decoding relay bundle message: ", "err", err.Error())
 				}
 
 				var txs types.Transactions
@@ -345,7 +343,7 @@ func (pool *TxPool) readWSMessages() {
 				for _, encodedTx := range bundleMessage.Data.EncodedTxs {
 					tx := new(types.Transaction)
 					if err := tx.UnmarshalBinary(encodedTx); err != nil {
-						log.Error("Error while decoding bundle transactions: ", err.Error(), nil)
+						log.Error("Error while decoding bundle transactions: ", "err", err.Error())
 					}
 					txs = append(txs, tx)
 				}
