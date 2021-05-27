@@ -801,7 +801,12 @@ func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Addres
 	w.current.receipts = append(w.current.receipts, receipt)
 
 	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-	w.current.profit.Add(w.current.profit, gasUsed.Mul(gasUsed, tx.GasPrice()))
+	gasPrice, err := tx.EffectiveGasTip(w.current.header.BaseFee)
+	if err != nil {
+		w.current.state.RevertToSnapshot(snap)
+		return nil, err
+	}
+	w.current.profit.Add(w.current.profit, gasUsed.Mul(gasUsed, gasPrice))
 
 	return receipt.Logs, nil
 }
@@ -1381,7 +1386,11 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 		}
 
 		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-		gasFeesTx := gasUsed.Mul(gasUsed, tx.GasPrice())
+		gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
+		if err != nil {
+			return simulatedBundle{}, err
+		}
+		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
 		coinbaseBalanceAfter := state.GetBalance(w.coinbase)
 		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
