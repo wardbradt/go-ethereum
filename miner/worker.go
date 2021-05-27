@@ -1354,6 +1354,10 @@ func (w *worker) computeBundleGas(bundle types.MevBundle, parent *types.Block, h
 	ethSentToCoinbase := new(big.Int)
 
 	for i, tx := range bundle.Txs {
+		if header.BaseFee != nil && (tx.GasFeeCap().Cmp(header.BaseFee) == -1 || tx.GasFeeCap().Cmp(tx.GasTipCap()) == -1) {
+			return simulatedBundle{}, types.ErrGasFeeCapTooLow
+		}
+
 		state.Prepare(tx.Hash(), common.Hash{}, i+currentTxCount)
 		coinbaseBalanceBefore := state.GetBalance(w.coinbase)
 
