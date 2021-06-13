@@ -46,7 +46,7 @@ Parameters:
 
   InstanceType:
     Type: String
-    Default: m6gd.large
+    Default: m6gd.xlarge
 
   MemoryLimit:
     Type: Number

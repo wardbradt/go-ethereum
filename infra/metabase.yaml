@@ -343,7 +343,7 @@ Resources:
                   "logs:CreateLogStream",
                   "logs:DescribeLogGroups",
                   "logs:DescribeLogStreams",
-                  "logs:PutLogEvents",
+                  "logs:PutLogEvents"
                 ],
                 "Resource": "*"
               }]
