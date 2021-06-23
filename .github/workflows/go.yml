@@ -60,5 +60,5 @@ jobs:
         cd e2e
         GETH=`pwd`/../build/bin/geth ./run.sh &
         sleep 15
-        yarn run demo-simple
-        yarn run demo-contract
+        yarn run 1559-demo-simple
+        yarn run 1559-demo-contract
