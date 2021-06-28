@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -73,7 +74,7 @@ func (w *multiWorker) disablePreseal() {
 	}
 }
 
-func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool) *multiWorker {
+func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(*types.Block) bool, init bool, jsonMEVLogFile *os.File) *multiWorker {
 	queue := make(chan *task)
 
 	regularWorker := newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
