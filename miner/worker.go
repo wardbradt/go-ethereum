@@ -1502,7 +1502,7 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 		if i == len(bundles)-1 {
 			// the floor gas price is 99/100 what was simulated at the top of the block
 			// TODO: It would be more profitable to set floorGasPrice = min(gas price of txs in pendingTxs)
-			//   if gasusedby(pendingTxs) + simmedTxs.totalGasUsed > gas limit
+			//   if gasusedby(pendingTxs) + simmed.totalGasUsed > gas limit
 			floorGasPrice = new(big.Int).Mul(bundle.mevGasPrice, big.NewInt(99))
 			floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
 		} else {
