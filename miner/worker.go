@@ -1264,7 +1264,6 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) bool {
 			log.Error("Failed to fetch pending transactions", "err", err)
 			return true
 		}
-		w.eth.TxPool().GasPrice()
 
 		bundleTxs, bundle, numBundles, err := w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
