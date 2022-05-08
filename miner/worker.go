@@ -1264,6 +1264,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) bool {
 			log.Error("Failed to fetch pending transactions", "err", err)
 			return true
 		}
+		w.eth.TxPool().GasPrice()
 
 		bundleTxs, bundle, numBundles, err := w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
@@ -1494,13 +1495,22 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 	}
 
 	count := 0
-	for _, bundle := range bundles {
+	for i, bundle := range bundles {
 		prevState = currentState.Copy()
 		prevGasPool = new(core.GasPool).AddGas(gasPool.Gas())
 
-		// the floor gas price is 99/100 what was simulated at the top of the block
-		floorGasPrice := new(big.Int).Mul(bundle.mevGasPrice, big.NewInt(99))
-		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
+		var floorGasPrice *big.Int
+		if i == len(bundles)-1 {
+			// the floor gas price is 99/100 what was simulated at the top of the block
+			// TODO: It would be more profitable to set floorGasPrice = min(gas price of txs in pendingTxs)
+			//   if gasusedby(pendingTxs) + simmedTxs.totalGasUsed > gas limit
+			floorGasPrice = new(big.Int).Mul(bundle.mevGasPrice, big.NewInt(99))
+			floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
+		} else {
+			// the floor gas price is the gas price of the next most profitable bundle
+			// subtract one to allow equality (simmed.mevGasPrice == bundles[i+1].mevGasPrice)
+			floorGasPrice = new(big.Int).Sub(bundles[i+1].mevGasPrice, big.NewInt(1))
+		}
 
 		simmed, err := w.computeBundleGas(env, bundle.originalBundle, currentState, gasPool, pendingTxs, len(finalBundle))
 		if err != nil || simmed.mevGasPrice.Cmp(floorGasPrice) <= 0 {
